@@ -1,0 +1,24 @@
+<svg width="256" height="256" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="paperrelay-bg" x1="34" y1="28" x2="220" y2="224" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#173EA8"/>
+      <stop offset="55%" stop-color="#0F8F79"/>
+      <stop offset="100%" stop-color="#F08A2E"/>
+    </linearGradient>
+    <linearGradient id="paperrelay-path" x1="84" y1="90" x2="176" y2="166" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#1C4ED8"/>
+      <stop offset="100%" stop-color="#F08A2E"/>
+    </linearGradient>
+  </defs>
+  <rect x="20" y="20" width="216" height="216" rx="52" fill="#09111F"/>
+  <rect x="34" y="34" width="188" height="188" rx="42" fill="url(#paperrelay-bg)"/>
+  <path d="M86 62H149L186 98V173C186 183.493 177.493 192 167 192H86C75.5066 192 67 183.493 67 173V81C67 70.5066 75.5066 62 86 62Z" fill="white"/>
+  <path d="M149 62V88C149 95.732 155.268 102 163 102H186L149 62Z" fill="#DCE6FA"/>
+  <path d="M91 96H142" stroke="#C6D2EA" stroke-width="8" stroke-linecap="round"/>
+  <path d="M91 116H136" stroke="#D8E1F2" stroke-width="8" stroke-linecap="round"/>
+  <circle cx="100" cy="136" r="17" fill="#0F8F79"/>
+  <circle cx="132" cy="132" r="13" fill="#1C4ED8"/>
+  <circle cx="159" cy="156" r="17" fill="#F08A2E"/>
+  <path d="M100 136L132 132L159 156" stroke="url(#paperrelay-path)" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M151 147L170 151L164 170" stroke="#B55216" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
