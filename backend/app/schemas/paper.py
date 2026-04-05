@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import List, Literal, Optional
 from datetime import datetime
 
@@ -35,7 +35,7 @@ class PaperAnalysisComplete(BaseModel):
 
 class ChatMessage(BaseModel):
     role: Literal["user", "assistant"]
-    content: str
+    content: str = Field(min_length=1)
 
 
 class ChatRequest(BaseModel):
@@ -51,4 +51,4 @@ class ReformatRequest(BaseModel):
 
 
 class ReformatResponse(BaseModel):
-    reformatted_fields: dict
+    reformatted_fields: dict[str, str]

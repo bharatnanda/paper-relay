@@ -1127,6 +1127,8 @@ Return strict JSON:
         summary_json: Dict[str, Any],
         reading_level: str,
     ) -> Dict[str, Any]:
+        if self.client is None:
+            return {field: summary_json.get(field, "") for field in self.REFORMAT_PROSE_FIELDS}
         if reading_level == "general":
             return {field: summary_json.get(field, "") for field in self.REFORMAT_PROSE_FIELDS}
 

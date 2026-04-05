@@ -594,6 +594,7 @@ class TestAIProcessor:
             "core_intuition": "The big idea: every word should pay attention to every other word at once.",
             "prior_work_and_gap": "Before this, models read words one at a time like reading left to right.",
         }
+        processor.client = object()
         with patch.object(processor, '_chat_json', AsyncMock(return_value=mock_response)):
             result = await processor.reformat_for_audience(summary_json, "eli5")
 
