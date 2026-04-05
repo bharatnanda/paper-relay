@@ -37,6 +37,21 @@ export interface PaperAnalysis {
     method_deep_dive?: string;
     results_and_evidence?: string;
     limitations_and_caveats?: string;
+    prior_work_and_gap?: string;
+    core_intuition?: string;
+    authors_claims?: string;
+    evidence_assessment?: string;
+    critique?: {
+      needs_revision: boolean;
+      overall_assessment: string;
+      issues: Array<{
+        field: string;
+        severity: 'high' | 'medium' | 'low';
+        type: 'overclaim' | 'missing_caveat' | 'vague_method' | 'evidence_gap' | 'coverage_gap';
+        description: string;
+        suggested_fix: string;
+      }>;
+    };
     reader_takeaways?: string[];
     section_breakdown?: DistilledSection[];
     paper_map?: PaperMap;
@@ -97,6 +112,9 @@ export interface FormulaExplanation {
   plain_explanation: string;
   symbols: Record<string, string>;
   importance: string;
+  intuition?: string;
+  prerequisites?: string[];
+  where_it_appears?: string;
 }
 
 export interface FigureCaption {

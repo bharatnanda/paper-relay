@@ -162,6 +162,22 @@ export const papersAPI = {
     });
     return response.data;
   },
+  chat: async (paperId: string, messages: Array<{role: 'user' | 'assistant', content: string}>, token: string) => {
+    const response = await api.post(
+      `/papers/${paperId}/chat`,
+      { messages },
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    return response.data as { reply: string };
+  },
+  reformat: async (paperId: string, readingLevel: 'general' | 'technical' | 'eli5', token: string) => {
+    const response = await api.post(
+      `/papers/${paperId}/reformat`,
+      { reading_level: readingLevel },
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    return response.data as { reformatted_fields: Record<string, string> };
+  },
 };
 
 export const shareAPI = {
