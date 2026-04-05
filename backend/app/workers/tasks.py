@@ -127,10 +127,11 @@ def process_paper_task(paper_id: str, arxiv_id: str):
                     formula_explanations = fallback_math
 
             update_progress("Generating concept relationships...", 72)
-            relationship_triples = await processor.generate_relationships(
-                terms, section_breakdown, paper_map
-            )
-            if isinstance(relationship_triples, Exception):
+            try:
+                relationship_triples = await processor.generate_relationships(
+                    terms, section_breakdown, paper_map
+                )
+            except Exception:
                 relationship_triples = []
 
             update_progress("Synthesizing final distillation...", 76)
@@ -146,18 +147,21 @@ def process_paper_task(paper_id: str, arxiv_id: str):
             )
 
             update_progress("Reviewing distillation quality...", 80)
-            critique = await processor.critique_distillation(
-                synthesis, paper_map, section_breakdown, results_view, summary_metadata
-            )
-
-            if isinstance(critique, Exception):
+            try:
+                critique = await processor.critique_distillation(
+                    synthesis, paper_map, section_breakdown, results_view, summary_metadata
+                )
+            except Exception:
                 critique = {"needs_revision": False, "overall_assessment": "", "issues": []}
 
             if critique.get("needs_revision"):
                 update_progress("Revising based on critique...", 84)
-                synthesis = await processor.revise_with_critique(
-                    synthesis, critique, paper_map, summary_metadata
-                )
+                try:
+                    synthesis = await processor.revise_with_critique(
+                        synthesis, critique, paper_map, summary_metadata
+                    )
+                except Exception:
+                    pass  # Keep original synthesis if revision fails
 
             if (
                 len((synthesis.get("eli5_explanation") or "").strip()) < 420
