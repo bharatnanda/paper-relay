@@ -126,6 +126,13 @@ def process_paper_task(paper_id: str, arxiv_id: str):
                 if fallback_math:
                     formula_explanations = fallback_math
 
+            update_progress("Generating concept relationships...", 72)
+            relationship_triples = await processor.generate_relationships(
+                terms, section_breakdown, paper_map
+            )
+            if isinstance(relationship_triples, Exception):
+                relationship_triples = []
+
             update_progress("Synthesizing final distillation...", 74)
             synthesis = await processor.synthesize_distillation(
                 summary_metadata,
@@ -138,6 +145,20 @@ def process_paper_task(paper_id: str, arxiv_id: str):
                 figure_interpretations,
             )
 
+            update_progress("Reviewing distillation quality...", 80)
+            critique = await processor.critique_distillation(
+                synthesis, paper_map, section_breakdown, results_view, summary_metadata
+            )
+
+            if isinstance(critique, Exception):
+                critique = {"needs_revision": False, "overall_assessment": "", "issues": []}
+
+            if critique.get("needs_revision"):
+                update_progress("Revising based on critique...", 84)
+                synthesis = await processor.revise_with_critique(
+                    synthesis, critique, paper_map, summary_metadata
+                )
+
             if (
                 len((synthesis.get("eli5_explanation") or "").strip()) < 420
                 or len((synthesis.get("guided_walkthrough") or "").strip()) < 800
@@ -147,6 +168,7 @@ def process_paper_task(paper_id: str, arxiv_id: str):
 
             return (
                 synthesis,
+                critique,
                 formula_explanations,
                 terms,
                 paper_map,
@@ -154,6 +176,7 @@ def process_paper_task(paper_id: str, arxiv_id: str):
                 results_view,
                 table_interpretations,
                 figure_interpretations,
+                relationship_triples,
             )
 
         result = asyncio.run(process_all())
@@ -166,6 +189,7 @@ def process_paper_task(paper_id: str, arxiv_id: str):
 
         (
             summary,
+            critique,
             formula_explanations,
             terms,
             paper_map,
@@ -173,12 +197,13 @@ def process_paper_task(paper_id: str, arxiv_id: str):
             results_view,
             table_interpretations,
             figure_interpretations,
+            relationship_triples,
         ) = result
 
         if isinstance(summary, Exception):
             raise summary
 
-        update_progress("Building knowledge graph...", 80)
+        update_progress("Building knowledge graph...", 90)
         kg_builder = KnowledgeGraphBuilder()
         knowledge_graph = kg_builder.build(
             terms,
@@ -186,6 +211,7 @@ def process_paper_task(paper_id: str, arxiv_id: str):
             results_view.get("artifact_interpretations", []),
             results_view,
             paper_map,
+            relationship_triples=relationship_triples,
         )
 
         update_progress("Saving results...", 90)
@@ -211,6 +237,7 @@ def process_paper_task(paper_id: str, arxiv_id: str):
             "table_interpretations": table_interpretations,
             "figure_interpretations": figure_interpretations,
             "terms": terms,
+            "critique": critique,
         }
         analysis.knowledge_graph_json = knowledge_graph
         analysis.processing_status = "complete"
