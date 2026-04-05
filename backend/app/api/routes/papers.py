@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from typing import List
 
@@ -8,8 +8,13 @@ from app.models.paper import Paper
 from app.models.analysis import PaperAnalysis
 from app.api.dependencies import get_current_user
 from app.services.ingestion import IngestionService, MetadataFetchError
-from app.schemas.paper import PaperAnalysisRequest, PaperAnalysisResponse, PaperAnalysisComplete
+from app.services.ai_processor import AIProcessor
+from app.schemas.paper import (
+    PaperAnalysisRequest, PaperAnalysisResponse, PaperAnalysisComplete,
+    ChatRequest, ChatResponse, ReformatRequest, ReformatResponse,
+)
 from app.workers.tasks import process_paper_task
+from app.core.limiter import limiter
 
 router = APIRouter()
 
@@ -127,3 +132,51 @@ async def delete_paper(paper_id: str, db: Session = Depends(get_db), current_use
     db.delete(paper)
     db.commit()
     return {"message": "Paper deleted"}
+
+
+@router.post("/{paper_id}/chat", response_model=ChatResponse)
+@limiter.limit("20/minute")
+async def chat_with_paper(
+    request: Request,
+    paper_id: str,
+    body: ChatRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    paper = db.query(Paper).filter(Paper.id == paper_id, Paper.user_id == current_user.id).first()
+    if paper is None:
+        raise HTTPException(status_code=404, detail="Paper not found")
+
+    analysis = db.query(PaperAnalysis).filter(PaperAnalysis.paper_id == paper_id).first()
+    if analysis is None or analysis.processing_status != "complete":
+        raise HTTPException(status_code=400, detail="Paper analysis is not complete")
+
+    summary_json = analysis.summary_json or {}
+    messages = [{"role": m.role, "content": m.content} for m in body.messages]
+
+    processor = AIProcessor()
+    reply = await processor.chat_with_paper(messages, summary_json)
+    return ChatResponse(reply=reply)
+
+
+@router.post("/{paper_id}/reformat", response_model=ReformatResponse)
+@limiter.limit("10/minute")
+async def reformat_paper(
+    request: Request,
+    paper_id: str,
+    body: ReformatRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    paper = db.query(Paper).filter(Paper.id == paper_id, Paper.user_id == current_user.id).first()
+    if paper is None:
+        raise HTTPException(status_code=404, detail="Paper not found")
+
+    analysis = db.query(PaperAnalysis).filter(PaperAnalysis.paper_id == paper_id).first()
+    if analysis is None or analysis.processing_status != "complete":
+        raise HTTPException(status_code=400, detail="Paper analysis is not complete")
+
+    summary_json = analysis.summary_json or {}
+    processor = AIProcessor()
+    reformatted = await processor.reformat_for_audience(summary_json, body.reading_level)
+    return ReformatResponse(reformatted_fields=reformatted)

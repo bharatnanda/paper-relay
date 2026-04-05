@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Literal, Optional
 from datetime import datetime
 
 class PaperMetadata(BaseModel):
@@ -31,3 +31,24 @@ class PaperAnalysisComplete(BaseModel):
     error_message: Optional[str] = None
     summary: Optional[dict] = None
     knowledge_graph: Optional[dict] = None
+
+
+class ChatMessage(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str
+
+
+class ChatRequest(BaseModel):
+    messages: List[ChatMessage]
+
+
+class ChatResponse(BaseModel):
+    reply: str
+
+
+class ReformatRequest(BaseModel):
+    reading_level: Literal["general", "technical", "eli5"]
+
+
+class ReformatResponse(BaseModel):
+    reformatted_fields: dict
