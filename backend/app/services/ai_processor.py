@@ -597,7 +597,7 @@ Rules:
 {formula_context}
 
 Return strict JSON:
-{{"formulas": [{{"latex": "...", "plain_explanation": "...", "symbols": {{"x": "meaning or unknown"}}, "importance": "why it matters in this paper"}}]}}"""
+{{"formulas": [{{"latex": "...", "plain_explanation": "...", "intuition": "what this computes at a high level before any symbols", "prerequisites": ["concept needed to understand this"], "where_it_appears": "which part of method/evaluation this drives", "symbols": {{"x": "meaning or unknown"}}, "importance": "why it matters in this paper"}}]}}"""
 
         result = await self._chat_json(
             "You are a technical explainer for research math. Be precise and avoid guessing.",
@@ -646,7 +646,7 @@ Source excerpts:
 {source[:9000]}
 
 Return strict JSON:
-{{"formulas": [{{"latex": "...", "plain_explanation": "...", "symbols": {{"x": "meaning or unknown"}}, "importance": "why it matters in this paper"}}]}}"""
+{{"formulas": [{{"latex": "...", "plain_explanation": "...", "intuition": "what this computes at a high level before any symbols", "prerequisites": ["concept needed to understand this"], "where_it_appears": "which part of method/evaluation this drives", "symbols": {{"x": "meaning or unknown"}}, "importance": "why it matters in this paper"}}]}}"""
 
         result = await self._chat_json(
             "You recover and explain the most important mathematical ideas from research papers.",

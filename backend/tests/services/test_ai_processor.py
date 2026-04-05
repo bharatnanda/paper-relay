@@ -310,6 +310,32 @@ class TestAIProcessor:
             assert result == []
 
     @pytest.mark.anyio
+    async def test_explain_formulas_returns_enriched_schema(self, processor):
+        """Formula output must include intuition, prerequisites, where_it_appears."""
+        mock_response = {
+            "formulas": [{
+                "latex": r"\mathcal{L} = -\sum y \log \hat{y}",
+                "plain_explanation": "Cross-entropy loss between predictions and targets.",
+                "intuition": "Measures how surprised the model is by the correct label.",
+                "prerequisites": ["probability", "logarithm"],
+                "where_it_appears": "training objective in the method section",
+                "symbols": {"y": "true label", r"\hat{y}": "predicted probability"},
+                "importance": "Core training signal for the model.",
+            }]
+        }
+        formulas = [{"latex": r"\mathcal{L} = -\sum y \log \hat{y}", "context": "Training loss."}]
+        processor.client = object()
+
+        with patch.object(processor, '_chat_json', AsyncMock(return_value=mock_response)):
+            result = await processor.explain_formulas(formulas)
+
+        assert "intuition" in result[0]
+        assert "prerequisites" in result[0]
+        assert "where_it_appears" in result[0]
+        assert result[0]["intuition"] == "Measures how surprised the model is by the correct label."
+        assert result[0]["prerequisites"] == ["probability", "logarithm"]
+
+    @pytest.mark.anyio
     async def test_extract_terms(self, processor):
         """Test that extract_terms returns list of terms with expected fields."""
         mock_response = {
