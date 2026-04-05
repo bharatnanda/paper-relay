@@ -133,7 +133,7 @@ def process_paper_task(paper_id: str, arxiv_id: str):
             if isinstance(relationship_triples, Exception):
                 relationship_triples = []
 
-            update_progress("Synthesizing final distillation...", 74)
+            update_progress("Synthesizing final distillation...", 76)
             synthesis = await processor.synthesize_distillation(
                 summary_metadata,
                 paper_map,
@@ -163,7 +163,7 @@ def process_paper_task(paper_id: str, arxiv_id: str):
                 len((synthesis.get("eli5_explanation") or "").strip()) < 420
                 or len((synthesis.get("guided_walkthrough") or "").strip()) < 800
             ):
-                update_progress("Deepening the walkthrough...", 78)
+                update_progress("Deepening the walkthrough...", 88)
                 synthesis = await processor.repair_distillation(synthesis, summary_metadata, paper_map)
 
             return (
