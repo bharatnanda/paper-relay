@@ -881,6 +881,103 @@ Return strict JSON with the same keys for:
         })
         return synthesis
 
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=4, max=10),
+        retry=retry_if_exception_type((APIError, RateLimitError)),
+    )
+    async def critique_distillation(
+        self,
+        synthesis: Dict[str, Any],
+        paper_map: Dict[str, Any],
+        section_breakdown: List[Dict[str, Any]],
+        results_view: Dict[str, Any],
+        metadata: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        section_notes = "\n".join(
+            f"- {s.get('title', 'Untitled')}: {(s.get('summary') or '')[:300]}"
+            for s in section_breakdown[:8]
+        )
+        evidence_notes = "\n".join(
+            f"- {e}" for e in (results_view.get("strongest_evidence") or [])[:6]
+        )
+        caveats_from_paper = "\n".join(
+            f"- {c}" for c in (
+                self._coerce_list(results_view.get("caveats"))
+                or self._coerce_list(paper_map.get("likely_limitations"))
+            )[:6]
+        )
+        prompt = f"""Review this research paper distillation and identify specific quality problems.
+
+Issue types to check:
+- overclaim: distillation states a result stronger than the evidence shows
+- missing_caveat: a limitation in the source material is absent or understated
+- vague_method: method explanation is hand-wavy where the source is concrete
+- evidence_gap: distillation claims evidence not in the extracted results
+- coverage_gap: a priority section from the paper map is missing or barely addressed
+
+Paper title: {metadata.get('title', 'Unknown')}
+Paper type: {paper_map.get('paper_type', 'unknown')}
+Main question: {paper_map.get('main_question', 'unknown')}
+Proposed solution: {paper_map.get('proposed_solution', 'unknown')}
+Math relevance: {paper_map.get('math_relevance', 'unknown')}
+
+Ground truth — section summaries:
+{section_notes or '- None'}
+
+Ground truth — extracted evidence:
+{evidence_notes or '- None extracted'}
+
+Ground truth — caveats and limitations:
+{caveats_from_paper or '- None extracted'}
+
+Distillation fields to review:
+- quick_summary: {(synthesis.get('quick_summary') or '')[:600]}
+- problem_and_motivation: {(synthesis.get('problem_and_motivation') or '')[:600]}
+- method_deep_dive: {(synthesis.get('method_deep_dive') or '')[:800]}
+- results_and_evidence: {(synthesis.get('results_and_evidence') or '')[:600]}
+- authors_claims: {(synthesis.get('authors_claims') or '')[:500]}
+- evidence_assessment: {(synthesis.get('evidence_assessment') or '')[:500]}
+- limitations_and_caveats: {(synthesis.get('limitations_and_caveats') or '')[:500]}
+- guided_walkthrough (first 900 chars): {(synthesis.get('guided_walkthrough') or '')[:900]}
+
+Rules:
+- Only flag real problems grounded in the source material above.
+- Directionally correct but imprecise → severity "medium", not "high".
+- If the distillation is accurate and complete, return needs_revision: false with empty issues.
+- Do not penalise appropriate hedging.
+
+Return strict JSON:
+{{
+  "needs_revision": true,
+  "overall_assessment": "one sentence",
+  "issues": [
+    {{
+      "field": "method_deep_dive|results_and_evidence|limitations_and_caveats|guided_walkthrough|problem_and_motivation|authors_claims|evidence_assessment|eli5_explanation",
+      "severity": "high|medium|low",
+      "type": "overclaim|missing_caveat|vague_method|evidence_gap|coverage_gap",
+      "description": "specific problem in under 80 words",
+      "suggested_fix": "concrete instruction for the revision pass"
+    }}
+  ]
+}}"""
+
+        fallback: Dict[str, Any] = {
+            "needs_revision": False,
+            "overall_assessment": "Critique unavailable.",
+            "issues": [],
+        }
+        result = await self._chat_json(
+            "You are a strict, grounded critic of research paper distillations. Flag only real problems backed by the source material.",
+            prompt,
+            fallback,
+        )
+        if not isinstance(result, dict):
+            return fallback
+        if not isinstance(result.get("issues"), list):
+            result["issues"] = []
+        return result
+
     async def generate_summary(self, paper_text: str, metadata: Dict) -> Dict[str, Any]:
         paper_map = await self.map_paper(paper_text, metadata)
         section_breakdown = await self.distill_sections(paper_text, metadata, paper_map)

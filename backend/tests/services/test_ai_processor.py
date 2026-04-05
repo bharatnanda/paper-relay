@@ -437,3 +437,68 @@ class TestAIProcessor:
         assert result["core_intuition"] == "The central idea is Z."
         assert result["authors_claims"] == "Authors claim state-of-the-art on benchmarks."
         assert result["evidence_assessment"] == "Evidence supports moderate gains; strong claim on one dataset."
+
+    @pytest.mark.anyio
+    async def test_critique_distillation_flags_overclaim(self, processor):
+        synthesis = {
+            "quick_summary": "The model achieves state-of-the-art on all benchmarks.",
+            "method_deep_dive": "We use a novel approach.",
+            "results_and_evidence": "Our method beats all baselines by 20%.",
+            "limitations_and_caveats": "",
+            "authors_claims": "State-of-the-art across all tasks.",
+            "evidence_assessment": "",
+        }
+        paper_map = {
+            "main_question": "Can X solve Y?",
+            "proposed_solution": "A new model",
+            "paper_type": "model",
+            "math_relevance": "moderate",
+        }
+        section_breakdown = [{"title": "Results", "summary": "Competitive with baselines"}]
+        results_view = {
+            "strongest_evidence": ["Comparable to baseline on main metric"],
+            "caveats": ["Only tested on one dataset"],
+        }
+        metadata = {"title": "Test Paper"}
+
+        mock_response = {
+            "needs_revision": True,
+            "overall_assessment": "Distillation overclaims result strength.",
+            "issues": [{
+                "field": "results_and_evidence",
+                "severity": "high",
+                "type": "overclaim",
+                "description": "Claims 20% improvement but extracted evidence shows only competitive performance.",
+                "suggested_fix": "Soften claim to match evidence.",
+            }],
+        }
+
+        with patch.object(processor, '_chat_json', AsyncMock(return_value=mock_response)):
+            result = await processor.critique_distillation(
+                synthesis, paper_map, section_breakdown, results_view, metadata
+            )
+
+        assert result["needs_revision"] is True
+        assert len(result["issues"]) == 1
+        assert result["issues"][0]["type"] == "overclaim"
+        assert result["issues"][0]["severity"] == "high"
+        assert result["issues"][0]["field"] == "results_and_evidence"
+
+    @pytest.mark.anyio
+    async def test_critique_distillation_returns_no_issues_for_good_synthesis(self, processor):
+        mock_response = {
+            "needs_revision": False,
+            "overall_assessment": "Distillation is accurate and complete.",
+            "issues": [],
+        }
+        with patch.object(processor, '_chat_json', AsyncMock(return_value=mock_response)):
+            result = await processor.critique_distillation({}, {}, [], {}, {"title": "T"})
+        assert result["needs_revision"] is False
+        assert result["issues"] == []
+
+    @pytest.mark.anyio
+    async def test_critique_distillation_handles_bad_response(self, processor):
+        with patch.object(processor, '_chat_json', AsyncMock(return_value="not a dict")):
+            result = await processor.critique_distillation({}, {}, [], {}, {"title": "T"})
+        assert result["needs_revision"] is False
+        assert result["issues"] == []
