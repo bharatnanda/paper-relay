@@ -63,3 +63,29 @@ class TestKnowledgeGraphBuilder:
         assert ("artifact_table_1", "gaama", "supports") in edge_types
         assert ("artifact_table_1", "accuracy", "supports") in edge_types
         assert ("paper_focus", "gaama", "centers_on") in edge_types
+
+
+def test_build_incorporates_llm_relationship_triples():
+    from app.services.knowledge_graph import KnowledgeGraphBuilder
+    builder = KnowledgeGraphBuilder()
+    terms = [
+        {"term": "Transformer", "category": "method", "definition": "Attn model", "mentions": 5},
+        {"term": "BERT", "category": "method", "definition": "Pre-trained", "mentions": 4},
+    ]
+    triples = [{"source": "Transformer", "target": "BERT", "relationship": "builds_on"}]
+    result = builder.build(terms, "some text", relationship_triples=triples)
+
+    edge_types = [e["type"] for e in result["edges"]]
+    assert "builds_on" in edge_types
+
+
+def test_build_without_triples_is_backward_compatible():
+    from app.services.knowledge_graph import KnowledgeGraphBuilder
+    builder = KnowledgeGraphBuilder()
+    terms = [
+        {"term": "Transformer", "category": "method", "definition": "Attn model", "mentions": 5},
+    ]
+    # Should not raise — relationship_triples defaults to None
+    result = builder.build(terms, "some text")
+    assert "nodes" in result
+    assert "edges" in result

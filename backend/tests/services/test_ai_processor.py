@@ -540,3 +540,37 @@ class TestAIProcessor:
         with patch.object(processor, '_chat_json', AsyncMock(return_value=None)):
             result = await processor.revise_with_critique(synthesis, critique, {}, {"title": "T"})
         assert result["method_deep_dive"] == "Original text."
+
+    @pytest.mark.anyio
+    async def test_generate_relationships_returns_triples(self, processor):
+        terms = [
+            {"term": "Transformer", "category": "method", "definition": "Attention-based model", "mentions": 10},
+            {"term": "BERT", "category": "method", "definition": "Pre-trained language model", "mentions": 8},
+        ]
+        section_breakdown = [{"title": "Method", "summary": "We build on BERT using Transformer layers."}]
+        paper_map = {"proposed_solution": "Fine-tuned Transformer based on BERT"}
+
+        mock_response = {
+            "relationships": [{"source": "Transformer", "target": "BERT", "relationship": "builds_on"}]
+        }
+
+        with patch.object(processor, '_chat_json', AsyncMock(return_value=mock_response)):
+            result = await processor.generate_relationships(terms, section_breakdown, paper_map)
+
+        assert isinstance(result, list)
+        assert result[0]["source"] == "Transformer"
+        assert result[0]["target"] == "BERT"
+        assert result[0]["relationship"] == "builds_on"
+
+    @pytest.mark.anyio
+    async def test_generate_relationships_returns_empty_for_no_terms(self, processor):
+        result = await processor.generate_relationships([], [], {})
+        assert result == []
+
+    @pytest.mark.anyio
+    async def test_generate_relationships_handles_bad_response(self, processor):
+        terms = [{"term": "X", "category": "method", "definition": "D", "mentions": 1},
+                 {"term": "Y", "category": "method", "definition": "E", "mentions": 1}]
+        with patch.object(processor, '_chat_json', AsyncMock(return_value="bad")):
+            result = await processor.generate_relationships(terms, [], {})
+        assert result == []

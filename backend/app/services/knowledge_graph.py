@@ -23,6 +23,7 @@ class KnowledgeGraphBuilder:
         artifact_interpretations: Optional[List[Dict[str, Any]]] = None,
         results_view: Optional[Dict[str, Any]] = None,
         paper_map: Optional[Dict[str, Any]] = None,
+        relationship_triples: Optional[List[Dict[str, str]]] = None,
     ) -> Dict[str, Any]:
         self.nodes = {}
         self.edges = []
@@ -31,11 +32,15 @@ class KnowledgeGraphBuilder:
         artifact_interpretations = artifact_interpretations or []
         results_view = results_view or {}
         paper_map = paper_map or {}
+        relationship_triples = relationship_triples or []
 
         self._create_term_nodes(terms)
         self._create_artifact_nodes(artifact_interpretations)
         self._create_results_nodes(results_view)
         self._create_focus_node(paper_map)
+
+        # LLM-generated triples first (high confidence)
+        self._add_llm_relationship_edges(relationship_triples)
 
         self._connect_artifacts_to_terms(artifact_interpretations, terms)
         self._connect_results_to_terms(results_view, terms)
@@ -94,6 +99,16 @@ class KnowledgeGraphBuilder:
             "definition": main_question,
             "value": 2,
         }
+
+    def _add_llm_relationship_edges(self, triples: List[Dict[str, str]]) -> None:
+        for triple in triples:
+            source_label = triple.get("source", "")
+            target_label = triple.get("target", "")
+            relationship = triple.get("relationship", "related_to")
+            source_id = self._node_id(source_label)
+            target_id = self._node_id(target_label)
+            if source_id in self.nodes and target_id in self.nodes:
+                self._add_edge(source_id, target_id, relationship, 1.5)
 
     def _connect_artifacts_to_terms(self, artifact_interpretations: List[Dict[str, Any]], terms: List[Dict[str, Any]]) -> None:
         for artifact in artifact_interpretations:

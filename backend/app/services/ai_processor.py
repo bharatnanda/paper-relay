@@ -1048,6 +1048,63 @@ Return strict JSON with only the revised fields:
                 synthesis[field] = revised
         return synthesis
 
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=4, max=10),
+        retry=retry_if_exception_type((APIError, RateLimitError)),
+    )
+    async def generate_relationships(
+        self,
+        terms: List[Dict[str, Any]],
+        section_breakdown: List[Dict[str, Any]],
+        paper_map: Dict[str, Any],
+    ) -> List[Dict[str, str]]:
+        if not terms:
+            return []
+
+        term_names = [t.get("term", "") for t in terms if t.get("term")]
+        if len(term_names) < 2:
+            return []
+
+        section_context = "\n".join(
+            f"- {s.get('title', '')}: {(s.get('summary') or '')[:300]}"
+            for s in section_breakdown[:8]
+        )
+        prompt = f"""Identify explicit relationships between the following terms from a research paper.
+
+Terms: {", ".join(term_names)}
+
+Paper context:
+- Proposed solution: {paper_map.get('proposed_solution', 'unknown')}
+- Sections:
+{section_context or '- None'}
+
+For each pair of terms that have a clear, specific relationship in this paper, output one triple.
+Use only these relationship types: uses, improves, compares_to, solves, builds_on, evaluates, defines, requires.
+Only include relationships you can ground in the section summaries above. Do not invent connections.
+
+Return strict JSON:
+{{
+  "relationships": [
+    {{"source": "term A", "target": "term B", "relationship": "builds_on"}}
+  ]
+}}"""
+
+        result = await self._chat_json(
+            "You identify grounded relationships between terms in a research paper. Only output relationships supported by the paper context.",
+            prompt,
+            {"relationships": []},
+        )
+        if not isinstance(result, dict):
+            return []
+        items = result.get("relationships", [])
+        if not isinstance(items, list):
+            return []
+        return [
+            r for r in items
+            if isinstance(r, dict) and r.get("source") and r.get("target") and r.get("relationship")
+        ]
+
     async def generate_summary(self, paper_text: str, metadata: Dict) -> Dict[str, Any]:
         paper_map = await self.map_paper(paper_text, metadata)
         section_breakdown = await self.distill_sections(paper_text, metadata, paper_map)
