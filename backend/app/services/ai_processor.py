@@ -1105,6 +1105,117 @@ Return strict JSON:
             if isinstance(r, dict) and r.get("source") and r.get("target") and r.get("relationship")
         ]
 
+    REFORMAT_PROSE_FIELDS = [
+        "guided_walkthrough", "method_deep_dive", "eli5_explanation",
+        "problem_and_motivation", "core_intuition", "prior_work_and_gap",
+        "authors_claims", "evidence_assessment",
+    ]
+
+    READING_LEVEL_INSTRUCTIONS = {
+        "general": "Write for a curious non-expert reader. Use plain English. Avoid jargon unless you define it.",
+        "technical": "Write for a graduate-level reader familiar with the field. Retain precise technical terminology. Assume domain knowledge.",
+        "eli5": "Write for someone with no technical background. Use analogies, everyday language, and concrete examples. Avoid all jargon.",
+    }
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=4, max=10),
+        retry=retry_if_exception_type((APIError, RateLimitError)),
+    )
+    async def reformat_for_audience(
+        self,
+        summary_json: Dict[str, Any],
+        reading_level: str,
+    ) -> Dict[str, Any]:
+        if reading_level == "general":
+            return {field: summary_json.get(field, "") for field in self.REFORMAT_PROSE_FIELDS}
+
+        level_instruction = self.READING_LEVEL_INSTRUCTIONS.get(
+            reading_level, self.READING_LEVEL_INSTRUCTIONS["general"]
+        )
+        current_fields = "\n\n".join(
+            f"## {field}\n{(summary_json.get(field) or '')[:1400]}"
+            for field in self.REFORMAT_PROSE_FIELDS
+            if summary_json.get(field)
+        )
+        field_keys = ", ".join(f'"{f}": "rewritten text"' for f in self.REFORMAT_PROSE_FIELDS)
+
+        prompt = f"""Rewrite the following research paper distillation fields for a different audience level.
+
+Audience instruction: {level_instruction}
+
+Rules:
+- Preserve the factual content and accuracy exactly. Do not add or remove claims.
+- Only change the language level and style to match the audience.
+- Return all fields even if unchanged.
+
+Fields to rewrite:
+{current_fields}
+
+Return strict JSON:
+{{{field_keys}}}"""
+
+        fallback = {field: summary_json.get(field, "") for field in self.REFORMAT_PROSE_FIELDS}
+        result = await self._chat_json(
+            f"You rewrite research paper distillations for a specific audience. Preserve all facts. Audience: {level_instruction}",
+            prompt,
+            fallback,
+        )
+        if not isinstance(result, dict):
+            return fallback
+        return {field: result.get(field) or summary_json.get(field, "") for field in self.REFORMAT_PROSE_FIELDS}
+
+    async def chat_with_paper(
+        self,
+        messages: List[Dict[str, Any]],
+        summary_json: Dict[str, Any],
+    ) -> str:
+        terms_text = "\n".join(
+            f"- {t.get('term')}: {t.get('definition', '')}"
+            for t in (summary_json.get("terms") or [])[:12]
+        )
+        formulas_text = "\n".join(
+            f"- {f.get('latex', 'Formula')}: {f.get('intuition', f.get('plain_explanation', ''))}"
+            for f in (summary_json.get("formula_explanations") or [])[:6]
+        )
+        system_prompt = f"""You are an expert assistant helping a reader understand a specific research paper. Answer questions accurately using only the paper content below. If the content does not support a claim, say so explicitly — do not guess.
+
+=== PAPER CONTENT ===
+Quick summary: {(summary_json.get('quick_summary') or '')[:400]}
+
+Problem: {(summary_json.get('problem_and_motivation') or '')[:500]}
+
+Core idea: {(summary_json.get('core_intuition') or summary_json.get('method_deep_dive') or '')[:500]}
+
+Method: {(summary_json.get('method_deep_dive') or '')[:700]}
+
+Results: {(summary_json.get('results_and_evidence') or '')[:500]}
+
+What authors claim: {(summary_json.get('authors_claims') or '')[:400]}
+
+Evidence assessment: {(summary_json.get('evidence_assessment') or '')[:400]}
+
+Limitations: {(summary_json.get('limitations_and_caveats') or '')[:400]}
+
+Walkthrough: {(summary_json.get('guided_walkthrough') or '')[:1200]}
+
+Key terms:
+{terms_text or '- None'}
+
+Math:
+{formulas_text or '- None'}
+=== END PAPER CONTENT ===
+
+Return strict JSON: {{"reply": "your answer"}}"""
+
+        last_user_content = next(
+            (m["content"] for m in reversed(messages) if m.get("role") == "user"), ""
+        )
+        result = await self._chat_json(system_prompt, last_user_content, {"reply": ""})
+        if not isinstance(result, dict):
+            return "Unable to generate a response at this time."
+        return result.get("reply") or "Unable to generate a response at this time."
+
     async def generate_summary(self, paper_text: str, metadata: Dict) -> Dict[str, Any]:
         paper_map = await self.map_paper(paper_text, metadata)
         section_breakdown = await self.distill_sections(paper_text, metadata, paper_map)

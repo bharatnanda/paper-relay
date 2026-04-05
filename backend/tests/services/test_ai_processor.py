@@ -574,3 +574,65 @@ class TestAIProcessor:
         with patch.object(processor, '_chat_json', AsyncMock(return_value="bad")):
             result = await processor.generate_relationships(terms, [], {})
         assert result == []
+
+    @pytest.mark.anyio
+    async def test_reformat_for_audience_reformats_prose_fields(self, processor):
+        summary_json = {
+            "guided_walkthrough": "The paper introduces a novel attention mechanism applied to...",
+            "method_deep_dive": "Using multi-head self-attention layers with position encodings...",
+            "eli5_explanation": "Think of the model like a reader who...",
+            "problem_and_motivation": "Current NLP models fail to capture long-range dependencies...",
+            "core_intuition": "The key insight is that every word should attend to every other word.",
+            "prior_work_and_gap": "Previous recurrent models processed sequences step by step.",
+        }
+        mock_response = {
+            "guided_walkthrough": "In really simple terms, this paper shows a new way...",
+            "method_deep_dive": "The approach works by letting every word look at every other word...",
+            "eli5_explanation": "Imagine you have a magic highlighter...",
+            "problem_and_motivation": "The problem was that old models had to read words one at a time...",
+            "core_intuition": "The big idea: every word should pay attention to every other word at once.",
+            "prior_work_and_gap": "Before this, models read words one at a time like reading left to right.",
+        }
+        with patch.object(processor, '_chat_json', AsyncMock(return_value=mock_response)):
+            result = await processor.reformat_for_audience(summary_json, "eli5")
+
+        assert "guided_walkthrough" in result
+        assert "method_deep_dive" in result
+        assert result["guided_walkthrough"] == "In really simple terms, this paper shows a new way..."
+
+    @pytest.mark.anyio
+    async def test_reformat_for_audience_skips_llm_for_general_level(self, processor):
+        summary_json = {"guided_walkthrough": "Original text."}
+        with patch.object(processor, '_chat_json', AsyncMock()) as mock_chat:
+            result = await processor.reformat_for_audience(summary_json, "general")
+        mock_chat.assert_not_called()
+        assert result["guided_walkthrough"] == "Original text."
+
+    @pytest.mark.anyio
+    async def test_chat_with_paper_returns_reply_string(self, processor):
+        messages = [{"role": "user", "content": "What is the main contribution?"}]
+        summary_json = {
+            "quick_summary": "The paper introduces X.",
+            "method_deep_dive": "Using Y approach...",
+            "guided_walkthrough": "First, the authors...",
+            "results_and_evidence": "Results show...",
+            "limitations_and_caveats": "Only tested on English.",
+            "terms": [{"term": "X", "definition": "The proposed method"}],
+            "formula_explanations": [],
+            "section_breakdown": [],
+        }
+        mock_response = {"reply": "The main contribution is X, which addresses gap Y."}
+
+        with patch.object(processor, '_chat_json', AsyncMock(return_value=mock_response)):
+            result = await processor.chat_with_paper(messages, summary_json)
+
+        assert isinstance(result, str)
+        assert result == "The main contribution is X, which addresses gap Y."
+
+    @pytest.mark.anyio
+    async def test_chat_with_paper_returns_fallback_on_no_client(self, processor):
+        processor.client = None
+        result = await processor.chat_with_paper(
+            [{"role": "user", "content": "What is this about?"}], {}
+        )
+        assert isinstance(result, str)
