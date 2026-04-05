@@ -373,3 +373,41 @@ class TestAIProcessor:
         with patch.object(processor, '_chat_json', AsyncMock(return_value={"terms": []})):
             await processor.extract_terms(long_text)
             # Should not raise an error, truncation happens in prompt construction
+
+    @pytest.mark.anyio
+    async def test_synthesize_distillation_returns_new_anatomy_fields(self, processor):
+        """New anatomy fields must be present in synthesize_distillation output."""
+        mock_response = {
+            "quick_summary": "Short summary.",
+            "guided_walkthrough": "A" * 900,
+            "eli5_explanation": "B" * 500,
+            "technical_summary": "Technical.",
+            "problem_and_motivation": "The problem.",
+            "prior_work_and_gap": "Prior work used X. This paper noticed gap Y.",
+            "core_intuition": "The central idea is Z.",
+            "method_deep_dive": "Method details.",
+            "results_and_evidence": "Results show improvement.",
+            "authors_claims": "Authors claim state-of-the-art on benchmarks.",
+            "evidence_assessment": "Evidence supports moderate gains; strong claim on one dataset.",
+            "limitations_and_caveats": "Only tested on English.",
+            "key_contributions": ["Contribution A"],
+            "key_findings": ["Finding B"],
+            "reader_takeaways": ["Takeaway C"],
+            "section_breakdown": [],
+        }
+        metadata = {"title": "Test", "authors": [], "abstract": "Abstract text"}
+        paper_map = {"main_question": "Q", "proposed_solution": "S", "math_relevance": "light"}
+        section_breakdown = []
+        results_view = {"results_summary": "R", "caveats": [], "artifact_interpretations": []}
+        formula_explanations = []
+        terms = []
+
+        with patch.object(processor, '_chat_json', AsyncMock(return_value=mock_response)):
+            result = await processor.synthesize_distillation(
+                metadata, paper_map, section_breakdown, results_view,
+                formula_explanations, terms
+            )
+        assert result["prior_work_and_gap"] == "Prior work used X. This paper noticed gap Y."
+        assert result["core_intuition"] == "The central idea is Z."
+        assert result["authors_claims"] == "Authors claim state-of-the-art on benchmarks."
+        assert result["evidence_assessment"] == "Evidence supports moderate gains; strong claim on one dataset."

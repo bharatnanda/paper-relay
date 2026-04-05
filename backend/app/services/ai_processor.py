@@ -770,6 +770,10 @@ Return strict JSON:
   "eli5_explanation": "substantial plain-language walkthrough for a non-expert",
   "technical_summary": "detailed but concise technical summary covering method and evidence",
   "problem_and_motivation": "why this paper exists",
+  "prior_work_and_gap": "what was attempted before this paper and what specific gap or limitation it addresses",
+  "core_intuition": "the central idea of the paper in one plain-English paragraph before any formulas or notation",
+  "authors_claims": "what the paper explicitly asserts as its contribution and conclusion",
+  "evidence_assessment": "what the extracted evidence actually supports; note any gap between this and authors_claims",
   "method_deep_dive": "how the approach works",
   "results_and_evidence": "what evidence the paper shows",
   "limitations_and_caveats": "limitations, tradeoffs, or missing evidence",
@@ -785,6 +789,10 @@ Return strict JSON:
             "eli5_explanation": metadata.get("abstract", "Simple explanation unavailable"),
             "technical_summary": metadata.get("abstract", "Technical summary unavailable"),
             "problem_and_motivation": metadata.get("abstract", ""),
+            "prior_work_and_gap": metadata.get("abstract", ""),
+            "core_intuition": paper_map.get("proposed_solution", ""),
+            "authors_claims": metadata.get("abstract", ""),
+            "evidence_assessment": results_view.get("results_summary", ""),
             "method_deep_dive": "Method summary unavailable",
             "results_and_evidence": results_view.get("results_summary", "Results summary unavailable"),
             "limitations_and_caveats": "; ".join(self._coerce_list(results_view.get("caveats"))),
@@ -836,7 +844,11 @@ Return strict JSON with the same keys for:
   "guided_walkthrough": "expanded walkthrough",
   "eli5_explanation": "expanded ELI5 walkthrough",
   "method_deep_dive": "expanded method explanation",
-  "limitations_and_caveats": "expanded limitations"
+  "limitations_and_caveats": "expanded limitations",
+  "prior_work_and_gap": "expanded prior work context if too brief",
+  "core_intuition": "expanded core intuition if too vague",
+  "authors_claims": "expanded authors claims if too vague",
+  "evidence_assessment": "expanded evidence assessment if too vague"
 }}"""
 
         fallback = {
@@ -844,6 +856,10 @@ Return strict JSON with the same keys for:
             "eli5_explanation": synthesis.get("eli5_explanation", ""),
             "method_deep_dive": synthesis.get("method_deep_dive", ""),
             "limitations_and_caveats": synthesis.get("limitations_and_caveats", ""),
+            "prior_work_and_gap": synthesis.get("prior_work_and_gap", ""),
+            "core_intuition": synthesis.get("core_intuition", ""),
+            "authors_claims": synthesis.get("authors_claims", ""),
+            "evidence_assessment": synthesis.get("evidence_assessment", ""),
         }
         result = await self._chat_json(
             "You deepen shallow research paper summaries without inventing facts.",
@@ -858,6 +874,10 @@ Return strict JSON with the same keys for:
             "eli5_explanation": result.get("eli5_explanation", synthesis.get("eli5_explanation")),
             "method_deep_dive": result.get("method_deep_dive", synthesis.get("method_deep_dive")),
             "limitations_and_caveats": result.get("limitations_and_caveats", synthesis.get("limitations_and_caveats")),
+            "prior_work_and_gap": result.get("prior_work_and_gap", synthesis.get("prior_work_and_gap")),
+            "core_intuition": result.get("core_intuition", synthesis.get("core_intuition")),
+            "authors_claims": result.get("authors_claims", synthesis.get("authors_claims")),
+            "evidence_assessment": result.get("evidence_assessment", synthesis.get("evidence_assessment")),
         })
         return synthesis
 
