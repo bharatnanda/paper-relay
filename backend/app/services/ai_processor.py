@@ -1165,11 +1165,19 @@ Return strict JSON:
             return fallback
         return {field: result.get(field) or summary_json.get(field, "") for field in self.REFORMAT_PROSE_FIELDS}
 
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=4, max=10),
+        retry=retry_if_exception_type((APIError, RateLimitError)),
+    )
     async def chat_with_paper(
         self,
         messages: List[Dict[str, Any]],
         summary_json: Dict[str, Any],
     ) -> str:
+        if self.client is None:
+            return "The AI service is not configured. Please check LLM_PROVIDER settings."
+
         terms_text = "\n".join(
             f"- {t.get('term')}: {t.get('definition', '')}"
             for t in (summary_json.get("terms") or [])[:12]
@@ -1208,10 +1216,23 @@ Math:
 
 Return strict JSON: {{"reply": "your answer"}}"""
 
-        last_user_content = next(
-            (m["content"] for m in reversed(messages) if m.get("role") == "user"), ""
-        )
-        result = await self._chat_json(system_prompt, last_user_content, {"reply": ""})
+        full_messages = [{"role": "system", "content": system_prompt}] + [
+            {"role": m["role"], "content": m["content"]}
+            for m in messages
+            if m.get("role") in ("user", "assistant") and m.get("content")
+        ]
+        try:
+            response = await self.client.chat.completions.create(
+                model=self.model,
+                messages=full_messages,
+                max_tokens=self.max_tokens,
+                response_format={"type": "json_object"},
+            )
+            raw = response.choices[0].message.content or ""
+            result = json.loads(raw)
+        except (json.JSONDecodeError, Exception) as exc:
+            logger.error("chat_with_paper failed: %s", exc)
+            return "Unable to generate a response at this time."
         if not isinstance(result, dict):
             return "Unable to generate a response at this time."
         return result.get("reply") or "Unable to generate a response at this time."

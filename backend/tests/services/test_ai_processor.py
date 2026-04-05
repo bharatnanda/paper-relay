@@ -1,5 +1,6 @@
+import json
 import pytest
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from app.services.ai_processor import AIProcessor
 
 
@@ -621,10 +622,15 @@ class TestAIProcessor:
             "formula_explanations": [],
             "section_breakdown": [],
         }
-        mock_response = {"reply": "The main contribution is X, which addresses gap Y."}
 
-        with patch.object(processor, '_chat_json', AsyncMock(return_value=mock_response)):
-            result = await processor.chat_with_paper(messages, summary_json)
+        mock_choice = MagicMock()
+        mock_choice.message.content = json.dumps({"reply": "The main contribution is X, which addresses gap Y."})
+        mock_response = MagicMock()
+        mock_response.choices = [mock_choice]
+
+        processor.client = MagicMock()
+        processor.client.chat.completions.create = AsyncMock(return_value=mock_response)
+        result = await processor.chat_with_paper(messages, summary_json)
 
         assert isinstance(result, str)
         assert result == "The main contribution is X, which addresses gap Y."
@@ -636,3 +642,4 @@ class TestAIProcessor:
             [{"role": "user", "content": "What is this about?"}], {}
         )
         assert isinstance(result, str)
+        assert len(result) > 0
