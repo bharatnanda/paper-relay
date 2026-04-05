@@ -978,6 +978,76 @@ Return strict JSON:
             result["issues"] = []
         return result
 
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=4, max=10),
+        retry=retry_if_exception_type((APIError, RateLimitError)),
+    )
+    async def revise_with_critique(
+        self,
+        synthesis: Dict[str, Any],
+        critique: Dict[str, Any],
+        paper_map: Dict[str, Any],
+        metadata: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        issues = self._coerce_list(critique.get("issues"))
+        affected_fields: List[str] = list({
+            issue["field"] for issue in issues if issue.get("field")
+        })
+        if not affected_fields:
+            return synthesis
+
+        issues_text = "\n".join(
+            f"- [{issue.get('severity', '?').upper()}] {issue.get('field', '?')} "
+            f"| {issue.get('type', '?')}: {issue.get('description', '')} "
+            f"→ Fix: {issue.get('suggested_fix', '')}"
+            for issue in issues
+        )
+        current_values = "\n".join(
+            f'"{field}": {json.dumps((synthesis.get(field) or "")[:1200], ensure_ascii=True)}'
+            for field in affected_fields
+        )
+        field_keys = ", ".join(f'"{f}": "revised text"' for f in affected_fields)
+
+        prompt = f"""Revise specific fields in a research paper distillation to fix critic-identified problems.
+
+Rules:
+- Revise only the fields listed below. Do not touch other fields.
+- Every claim must stay grounded in the paper evidence — do not invent facts.
+- overclaim → soften language, add hedging, or remove unsupported claim
+- missing_caveat → add the missing limitation explicitly
+- vague_method → make the explanation concrete using the proposed solution
+- evidence_gap → remove or qualify the unsupported claim
+- coverage_gap → expand the field to cover the missing section
+
+Paper title: {metadata.get('title', 'Unknown')}
+Proposed solution: {paper_map.get('proposed_solution', 'unknown')}
+Main question: {paper_map.get('main_question', 'unknown')}
+
+Issues to fix:
+{issues_text}
+
+Current field values:
+{current_values}
+
+Return strict JSON with only the revised fields:
+{{{field_keys}}}"""
+
+        fallback = {field: synthesis.get(field, "") for field in affected_fields}
+        result = await self._chat_json(
+            "You revise research paper distillations to fix specific critic-identified problems. Stay grounded — no invented facts.",
+            prompt,
+            fallback,
+        )
+        if not isinstance(result, dict):
+            return synthesis
+
+        for field in affected_fields:
+            revised = result.get(field)
+            if revised:
+                synthesis[field] = revised
+        return synthesis
+
     async def generate_summary(self, paper_text: str, metadata: Dict) -> Dict[str, Any]:
         paper_map = await self.map_paper(paper_text, metadata)
         section_breakdown = await self.distill_sections(paper_text, metadata, paper_map)

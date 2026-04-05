@@ -502,3 +502,41 @@ class TestAIProcessor:
             result = await processor.critique_distillation({}, {}, [], {}, {"title": "T"})
         assert result["needs_revision"] is False
         assert result["issues"] == []
+
+    @pytest.mark.anyio
+    async def test_revise_with_critique_updates_only_affected_fields(self, processor):
+        synthesis = {
+            "results_and_evidence": "Our method beats all baselines by 20%.",
+            "method_deep_dive": "We use a novel approach.",
+            "limitations_and_caveats": "No limitations noted.",
+        }
+        critique = {
+            "needs_revision": True,
+            "issues": [{
+                "field": "results_and_evidence",
+                "severity": "high",
+                "type": "overclaim",
+                "description": "Claims 20% improvement but evidence is weaker.",
+                "suggested_fix": "Soften the claim to match the extracted evidence.",
+            }],
+        }
+        paper_map = {"proposed_solution": "A new architecture", "main_question": "Can X solve Y?"}
+        metadata = {"title": "Test Paper"}
+
+        mock_revision = {"results_and_evidence": "Our method shows competitive performance against baselines."}
+
+        with patch.object(processor, '_chat_json', AsyncMock(return_value=mock_revision)):
+            result = await processor.revise_with_critique(synthesis, critique, paper_map, metadata)
+
+        assert result["results_and_evidence"] == "Our method shows competitive performance against baselines."
+        assert result["method_deep_dive"] == "We use a novel approach."
+        assert result["limitations_and_caveats"] == "No limitations noted."
+
+    @pytest.mark.anyio
+    async def test_revise_with_critique_returns_original_on_bad_response(self, processor):
+        synthesis = {"method_deep_dive": "Original text."}
+        critique = {"issues": [{"field": "method_deep_dive", "type": "vague_method", "severity": "medium",
+                                 "description": "Too vague.", "suggested_fix": "Add detail."}]}
+        with patch.object(processor, '_chat_json', AsyncMock(return_value=None)):
+            result = await processor.revise_with_critique(synthesis, critique, {}, {"title": "T"})
+        assert result["method_deep_dive"] == "Original text."
