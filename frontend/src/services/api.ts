@@ -178,6 +178,11 @@ export const papersAPI = {
     );
     return response.data as { reformatted_fields: Record<string, string> };
   },
+  delete: async (paperId: string, token: string): Promise<void> => {
+    await api.delete(`/papers/${paperId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  },
 };
 
 export const shareAPI = {
