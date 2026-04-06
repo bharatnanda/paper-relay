@@ -141,12 +141,14 @@ export const KnowledgeGraphViz: React.FC<KnowledgeGraphVizProps> = ({ data }) =>
 
     nodes
       .on('mouseover', (_event, d) => {
-        tooltip.style('visibility', 'visible')
-          .html(`<strong>${d.label}</strong><br/>${d.definition || 'No definition'}<br/><em>${d.category}</em>`);
+        tooltip.style('visibility', 'visible').html(
+          `<div style="font-weight:700;margin-bottom:4px">${d.label}</div>` +
+          `<div style="display:inline-block;padding:2px 8px;border-radius:6px;border:1px solid ${theme.palette.divider};font-size:11px;margin-bottom:6px;opacity:0.75">${d.category}</div>` +
+          `<div style="opacity:0.8;line-height:1.5">${d.definition || 'No definition available.'}</div>`
+        );
       })
       .on('mousemove', (event) => {
-        tooltip.style('top', (event.pageY - 10) + 'px')
-          .style('left', (event.pageX + 10) + 'px');
+        tooltip.style('top', (event.pageY - 10) + 'px').style('left', (event.pageX + 10) + 'px');
       })
       .on('mouseout', () => {
         tooltip.style('visibility', 'hidden');
