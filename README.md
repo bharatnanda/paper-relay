@@ -12,7 +12,7 @@ PaperRelay is no longer just a short summary flow. The current product is built 
 - section-aware walkthroughs that cover motivation, method, results, and limitations
 - interpreted evidence from extracted figures and tables
 - formula explanations with nearby context when equation extraction succeeds
-- a grounded knowledge graph built from paper concepts plus interpreted evidence
+- a grounded knowledge graph built from paper concepts, interpreted evidence, and LLM-generated relationship triples
 - exports to PDF and Markdown with PaperRelay branding and source-paper links
 - public share links for completed analyses
 - an embedded source-paper viewer in the paper page
@@ -37,8 +37,11 @@ High-level flow:
 2. Build a paper map to identify the main question, likely contribution, and important sections.
 3. Distill sections with coverage-aware selection so the output includes method, evaluation, results, and limitations.
 4. Interpret tables and figures as evidence objects instead of treating them as raw snapshots only.
-5. Explain math using extracted equations or method-context fallback.
-6. Synthesize the final user-facing distillation and knowledge graph.
+5. Explain math using extracted equations or method-context fallback; each formula includes an intuition, prerequisite list, and location hint.
+6. Generate LLM relationship triples between key terms for the knowledge graph.
+7. Synthesize the final user-facing distillation — including `prior_work_and_gap`, `core_intuition`, `authors_claims`, and `evidence_assessment` alongside the existing fields.
+8. Run a critic pass to flag overclaims, missing caveats, vague method descriptions, and evidence gaps; conditionally revise flagged fields.
+9. Build the knowledge graph with LLM-generated edges as high-confidence connections.
 
 This keeps token usage under control while preserving more of the paper than a single short-context pass.
 
@@ -58,6 +61,11 @@ The paper page now includes:
 - extracted figure/table context
 - a toggleable original-paper PDF viewer
 - in-app and browser completion notifications for background jobs
+
+New capabilities available via API (frontend integration pending):
+
+- **Audience reformat**: switch the prose reading level between `general`, `technical`, and `eli5` without re-analyzing the paper
+- **Chat with paper**: ask follow-up questions about any completed analysis using the full conversation history
 
 The login and auth flow also auto-validates the persisted session on refresh, so stale client state is cleared when the backend session is no longer valid.
 
@@ -87,6 +95,8 @@ Known limitations:
 - figure understanding is only as good as extracted captions and surrounding text
 - PDF extraction quality varies by paper layout
 - heavily image-driven results can still be underexplained
+- the critic/revision pass adds latency to the pipeline — profile on real papers before deciding if it should be made opt-in
+- chat history is stateless (not persisted to DB); conversations are lost on page reload
 - parser-heavy tests should be run in the Compose/runtime environment where the full dependency set is available
 
 ## Auth Model

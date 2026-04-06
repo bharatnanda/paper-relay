@@ -1,6 +1,6 @@
 # PaperRelay API Documentation
 
-**Last Updated:** 2026-03-31
+**Last Updated:** 2026-04-05
 
 The paper-distillation endpoints are provider-agnostic. The backend can run with OpenAI or Azure OpenAI / Azure AI Foundry based on server configuration.
 
@@ -137,6 +137,15 @@ Completed response example:
     "results_and_evidence": "What the evidence shows",
     "guided_walkthrough": "Reader-friendly walkthrough",
     "limitations_and_caveats": "Important caveats",
+    "prior_work_and_gap": "What was tried before and what gap this paper addresses",
+    "core_intuition": "The central idea in plain English before any formalism",
+    "authors_claims": "What the paper explicitly asserts as its contribution",
+    "evidence_assessment": "What the extracted evidence actually supports; notes any gap vs. authors_claims",
+    "critique": {
+      "needs_revision": false,
+      "overall_assessment": "Distillation is accurate and well-grounded.",
+      "issues": []
+    },
     "key_contributions": ["Contribution 1"],
     "key_findings": ["Finding 1"],
     "reader_takeaways": ["Takeaway 1"],
@@ -178,7 +187,10 @@ Completed response example:
         "latex": "y = mx + b",
         "plain_explanation": "Plain-English explanation",
         "symbols": {"m": "slope"},
-        "importance": "Why the equation matters"
+        "importance": "Why the equation matters",
+        "intuition": "What this expression computes at a high level",
+        "prerequisites": ["linear algebra", "calculus"],
+        "where_it_appears": "method"
       }
     ],
     "figure_captions": [
@@ -245,6 +257,67 @@ Authorization: Bearer <session-token>
 DELETE /api/papers/{paper_id}
 Authorization: Bearer <session-token>
 ```
+
+### Chat with Paper
+
+```http
+POST /api/papers/{paper_id}/chat
+Authorization: Bearer <session-token>
+Content-Type: application/json
+
+{
+  "messages": [
+    {"role": "user", "content": "What is the main contribution?"},
+    {"role": "assistant", "content": "The main contribution is X."},
+    {"role": "user", "content": "How does it compare to prior work?"}
+  ]
+}
+```
+
+Rate limit: 20 requests/minute per user.
+
+Response:
+
+```json
+{"reply": "Compared to prior work, X improves Y by addressing gap Z..."}
+```
+
+The full conversation history is passed per request. No server-side history is stored (stateless).
+
+### Reformat for Audience
+
+```http
+POST /api/papers/{paper_id}/reformat
+Authorization: Bearer <session-token>
+Content-Type: application/json
+
+{"reading_level": "eli5"}
+```
+
+Valid values: `"general"` | `"technical"` | `"eli5"`
+
+Rate limit: 10 requests/minute per user.
+
+`"general"` returns the original prose fields unchanged (no LLM call). `"technical"` and `"eli5"` rewrite the prose fields for the target audience.
+
+Response:
+
+```json
+{
+  "reformatted_fields": {
+    "guided_walkthrough": "In simple terms...",
+    "method_deep_dive": "The approach works by...",
+    "eli5_explanation": "Imagine you have...",
+    "problem_and_motivation": "The problem was...",
+    "core_intuition": "The big idea is...",
+    "prior_work_and_gap": "Before this, models...",
+    "authors_claims": "The authors say...",
+    "evidence_assessment": "The evidence shows..."
+  }
+}
+```
+
+The frontend merges these fields into local display state; the database is not updated.
 
 ## Export
 
