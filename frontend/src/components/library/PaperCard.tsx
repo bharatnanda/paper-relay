@@ -27,6 +27,7 @@ export const PaperCard: React.FC<PaperCardProps> = ({ id, title, authors, arxiv_
   const [exportAnchorEl, setExportAnchorEl] = useState<null | HTMLElement>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -40,12 +41,15 @@ export const PaperCard: React.FC<PaperCardProps> = ({ id, title, authors, arxiv_
 
   const handleDelete = async () => {
     setDeleting(true);
+    setDeleteError(null);
     try {
       await papersAPI.delete(id, token);
       onDelete?.(id);
+      setDeleteDialogOpen(false);
+    } catch {
+      setDeleteError('Failed to delete. Please try again.');
     } finally {
       setDeleting(false);
-      setDeleteDialogOpen(false);
     }
   };
 
@@ -158,8 +162,9 @@ export const PaperCard: React.FC<PaperCardProps> = ({ id, title, authors, arxiv_
       message={`"${title || 'This paper'}" will be permanently removed from your library.`}
       confirmLabel="Delete"
       onConfirm={handleDelete}
-      onCancel={() => setDeleteDialogOpen(false)}
+      onCancel={() => { setDeleteDialogOpen(false); setDeleteError(null); }}
       loading={deleting}
+      error={deleteError ?? undefined}
     />
     </>
   );
