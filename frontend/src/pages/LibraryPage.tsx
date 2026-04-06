@@ -57,6 +57,10 @@ export const LibraryPage: React.FC = () => {
     (paper.arxiv_id || '').toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  const handleDelete = (deletedId: string) => {
+    setPapers(prev => prev.filter(p => p.id !== deletedId));
+  };
+
   return (
     <Container maxWidth="lg">
       <Box sx={{ mb: 4 }}>
@@ -112,6 +116,7 @@ export const LibraryPage: React.FC = () => {
                   arxiv_id={paper.arxiv_id}
                   created_at={paper.created_at}
                   token={user?.token || ''}
+                  onDelete={handleDelete}
                 />
               </Grid>
             ))}

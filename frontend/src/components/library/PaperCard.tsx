@@ -5,8 +5,11 @@ import { useNavigate } from 'react-router-dom';
 import ShareIcon from '@mui/icons-material/Share';
 import DownloadIcon from '@mui/icons-material/Download';
 import ArrowOutwardRoundedIcon from '@mui/icons-material/ArrowOutwardRounded';
+import DeleteOutlineRoundedIcon from '@mui/icons-material/DeleteOutlineRounded';
 import { ShareDialog } from '../paper/ShareDialog';
 import { ExportMenu } from '../paper/ExportMenu';
+import { ConfirmDialog } from './ConfirmDialog';
+import { papersAPI } from '../../services/api';
 
 interface PaperCardProps {
   id: string;
@@ -15,12 +18,15 @@ interface PaperCardProps {
   arxiv_id: string;
   created_at: string;
   token: string;
+  onDelete?: (id: string) => void;
 }
 
-export const PaperCard: React.FC<PaperCardProps> = ({ id, title, authors, arxiv_id, created_at, token }) => {
+export const PaperCard: React.FC<PaperCardProps> = ({ id, title, authors, arxiv_id, created_at, token, onDelete }) => {
   const navigate = useNavigate();
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
   const [exportAnchorEl, setExportAnchorEl] = useState<null | HTMLElement>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -30,6 +36,17 @@ export const PaperCard: React.FC<PaperCardProps> = ({ id, title, authors, arxiv_
     if (days === 1) return 'Yesterday';
     if (days < 7) return `${days} days ago`;
     return date.toLocaleDateString();
+  };
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    try {
+      await papersAPI.delete(id, token);
+      onDelete?.(id);
+    } finally {
+      setDeleting(false);
+      setDeleteDialogOpen(false);
+    }
   };
 
   const getGradient = () => {
@@ -106,6 +123,16 @@ export const PaperCard: React.FC<PaperCardProps> = ({ id, title, authors, arxiv_
             <DownloadIcon fontSize="small" />
           </IconButton>
         </Tooltip>
+        <Tooltip title="Delete">
+          <IconButton
+            aria-label="Delete paper"
+            color="error"
+            onClick={() => setDeleteDialogOpen(true)}
+            sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 4 }}
+          >
+            <DeleteOutlineRoundedIcon fontSize="small" />
+          </IconButton>
+        </Tooltip>
       </CardActions>
     </Card>
 
@@ -123,6 +150,16 @@ export const PaperCard: React.FC<PaperCardProps> = ({ id, title, authors, arxiv_
       paperId={id}
       paperTitle={title}
       token={token}
+    />
+
+    <ConfirmDialog
+      open={deleteDialogOpen}
+      title="Delete paper?"
+      message={`"${title || 'This paper'}" will be permanently removed from your library.`}
+      confirmLabel="Delete"
+      onConfirm={handleDelete}
+      onCancel={() => setDeleteDialogOpen(false)}
+      loading={deleting}
     />
     </>
   );
