@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 import secrets
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from app.models.database import get_db
 from app.models.user import User
 from app.models.paper import Paper
@@ -26,7 +26,7 @@ async def create_share_link(paper_id: str, db: Session = Depends(get_db), curren
     share_link = ShareLink(
         paper_id=paper_id, 
         share_token=share_token,
-        expires_at=datetime.utcnow() + timedelta(days=30)
+        expires_at=datetime.now(timezone.utc) + timedelta(days=30)
     )
     db.add(share_link)
     db.commit()

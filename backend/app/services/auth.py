@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app.models.user import User
 from app.models.paper import Paper
@@ -26,7 +26,7 @@ class AuthService:
             return None
         user = self.db.query(User).filter(User.email == email).first()
         if user:
-            user.last_login = datetime.utcnow()
+            user.last_login = datetime.now(timezone.utc)
             self.db.commit()
             self.db.refresh(user)
         return user

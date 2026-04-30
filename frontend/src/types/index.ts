@@ -41,6 +41,7 @@ export interface PaperAnalysis {
     core_intuition?: string;
     authors_claims?: string;
     evidence_assessment?: string;
+    bottom_line_verdict?: string;
     critique?: {
       needs_revision: boolean;
       overall_assessment: string;

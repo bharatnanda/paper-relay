@@ -67,8 +67,8 @@ class TestAIProcessor:
             {"evaluation_setup": "Setup", "results_summary": "Results", "strongest_evidence": ["evidence"], "caveats": ["caveat"], "artifact_interpretations": [{"artifact_type": "table", "label": "Table 1", "section_title": "Results", "what_it_shows": "Main comparison", "why_it_matters": "Shows the win", "confidence": "medium"}]},
             {"formulas": [{"latex": "score = reward", "plain_explanation": "Explains the score", "symbols": {"score": "final score"}, "importance": "Core objective"}]},
             {"terms": [{"term": "GAAMA", "category": "method", "definition": "Memory framework", "mentions": 7}]},
-            {"quick": "Test quick summary", "guided_walkthrough": "A longer guided walkthrough of the whole paper that covers the sections in order.", "eli5": "A longer plain-language explanation that is detailed enough for a non-expert reader to follow the paper.", "technical": "Technical summary", "problem_and_motivation": "Problem", "method_deep_dive": "Method", "results_and_evidence": "Results", "limitations_and_caveats": "Caveats", "key_contributions": ["Contribution"], "key_findings": ["Finding"], "reader_takeaways": ["Takeaway"], "section_breakdown": [{"title": "Introduction", "summary": "Intro summary", "why_it_matters": "It frames the paper"}]},
-            {"guided_walkthrough": "Expanded guided walkthrough for a non-expert reader with more detail.", "eli5": "Expanded ELI5 explanation for a non-expert reader with more detail.", "method_deep_dive": "Expanded method explanation.", "limitations_and_caveats": "Expanded caveats."},
+            {"quick": "Test quick summary", "guided_walkthrough": "A longer guided walkthrough of the whole paper that covers the sections in order.", "eli5": "A longer plain-language explanation that is detailed enough for a non-expert reader to follow the paper.", "technical": "Technical summary", "problem_and_motivation": "Problem", "method_deep_dive": "Method", "results_and_evidence": "Results", "limitations_and_caveats": "Caveats", "bottom_line_verdict": "Promising paper with credible but bounded evidence.", "key_contributions": ["Contribution"], "key_findings": ["Finding"], "reader_takeaways": ["Takeaway"], "section_breakdown": [{"title": "Introduction", "summary": "Intro summary", "why_it_matters": "It frames the paper"}]},
+            {"guided_walkthrough": "Expanded guided walkthrough for a non-expert reader with more detail.", "eli5": "Expanded ELI5 explanation for a non-expert reader with more detail.", "method_deep_dive": "Expanded method explanation.", "limitations_and_caveats": "Expanded caveats.", "bottom_line_verdict": "Still promising, but the evidence is limited to the reported setup."},
         ]
 
         with patch.object(processor, '_chat_json', AsyncMock(side_effect=responses)):
@@ -417,6 +417,7 @@ class TestAIProcessor:
             "results_and_evidence": "Results show improvement.",
             "authors_claims": "Authors claim state-of-the-art on benchmarks.",
             "evidence_assessment": "Evidence supports moderate gains; strong claim on one dataset.",
+            "bottom_line_verdict": "Useful contribution with promising but not definitive support.",
             "limitations_and_caveats": "Only tested on English.",
             "key_contributions": ["Contribution A"],
             "key_findings": ["Finding B"],
@@ -439,6 +440,7 @@ class TestAIProcessor:
         assert result.core_intuition == "The central idea is Z."
         assert result.authors_claims == "Authors claim state-of-the-art on benchmarks."
         assert result.evidence_assessment == "Evidence supports moderate gains; strong claim on one dataset."
+        assert result.bottom_line_verdict == "Useful contribution with promising but not definitive support."
 
     @pytest.mark.anyio
     async def test_critique_distillation_flags_overclaim(self, processor):
@@ -451,6 +453,7 @@ class TestAIProcessor:
             "limitations_and_caveats": "",
             "authors_claims": "State-of-the-art across all tasks.",
             "evidence_assessment": "",
+            "bottom_line_verdict": "The evidence is promising but narrower than the claims.",
         })
         paper_map = {
             "main_question": "Can X solve Y?",

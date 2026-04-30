@@ -1,5 +1,5 @@
 // frontend/src/pages/PaperPage.tsx
-import React, { useState } from 'react';
+import React, { Suspense, lazy, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Box, Button, Container, Drawer, Paper, Snackbar, Alert,
@@ -19,11 +19,12 @@ import { ProcessingProgress } from '../components/common/ProcessingProgress';
 import { WorkspaceHeader } from '../components/paper/WorkspaceHeader';
 import { PaperAtAGlance } from '../components/paper/PaperAtAGlance';
 import { AnatomyView } from '../components/paper/anatomy/AnatomyView';
-import { ChatPanel } from '../components/paper/ChatPanel';
-import { KnowledgeGraphViz } from '../components/paper/KnowledgeGraphViz';
 import { TermGlossary } from '../components/paper/TermGlossary';
 import { FormulaBlock } from '../components/paper/FormulaBlock';
 import { FormulaExplanation } from '../types';
+
+const ChatPanel = lazy(() => import('../components/paper/ChatPanel').then((module) => ({ default: module.ChatPanel })));
+const KnowledgeGraphViz = lazy(() => import('../components/paper/KnowledgeGraphViz').then((module) => ({ default: module.KnowledgeGraphViz })));
 
 const getProcessingFailureHint = (errorMessage?: string) => {
   const normalized = errorMessage?.toLowerCase() || '';
@@ -100,6 +101,13 @@ export const PaperPage: React.FC = () => {
   const originalPaperUrl = analysis.pdf_url || (analysis.arxiv_id ? `https://arxiv.org/pdf/${analysis.arxiv_id}.pdf` : '');
   const isMathHeavy = analysis.summary?.paper_map?.math_relevance === 'heavy';
 
+  const panelFallback = (
+    <LoadingSpinner size={28} message="Loading panel..." />
+  );
+  const workspaceFallback = (
+    <LoadingSpinner size={28} message="Loading section..." />
+  );
+
   const renderPaperViewer = (embedded: boolean) => (
     <Paper sx={{ p: { xs: 2, md: 2.5 }, borderRadius: embedded ? 6 : 0, display: 'flex', flexDirection: 'column', height: embedded ? 'calc(100vh - 168px)' : '100%', minHeight: embedded ? 680 : '100vh', boxShadow: embedded ? undefined : 'none' }}>
       <Stack spacing={2} sx={{ height: '100%' }}>
@@ -133,7 +141,9 @@ export const PaperPage: React.FC = () => {
   const renderRightPanel = () => {
     if (rightPanel === 'paper') return renderPaperViewer(true);
     if (rightPanel === 'chat') return (
-      <ChatPanel paperId={paperId!} token={user!.token} onClose={closeRightPanel} />
+      <Suspense fallback={panelFallback}>
+        <ChatPanel paperId={paperId!} token={user!.token} onClose={closeRightPanel} />
+      </Suspense>
     );
     return null;
   };
@@ -146,6 +156,9 @@ export const PaperPage: React.FC = () => {
         <Box sx={{ display: 'grid', gap: 3, minWidth: 0 }}>
 
           <WorkspaceHeader
+            title={analysis.title}
+            authors={analysis.authors}
+            arxivId={analysis.arxiv_id}
             readingLevel={readingLevel}
             onReadingLevelChange={handleReadingLevelChange}
             rightPanel={rightPanel}
@@ -163,7 +176,13 @@ export const PaperPage: React.FC = () => {
               </Box>
             )}
 
-            <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 3 }}>
+            <Tabs
+              value={tab}
+              onChange={(_, v) => setTab(v)}
+              variant="scrollable"
+              allowScrollButtonsMobile
+              sx={{ mb: 3 }}
+            >
               <Tab label="Anatomy" />
               {isMathHeavy && <Tab label="Math" />}
               <Tab label="Knowledge Graph" />
@@ -197,7 +216,9 @@ export const PaperPage: React.FC = () => {
               <>
                 {analysis.knowledge_graph ? (
                   <Stack spacing={3}>
-                    <KnowledgeGraphViz data={analysis.knowledge_graph} />
+                    <Suspense fallback={workspaceFallback}>
+                      <KnowledgeGraphViz data={analysis.knowledge_graph} />
+                    </Suspense>
                     {analysis.summary?.terms?.length ? (
                       <TermGlossary terms={analysis.summary.terms} />
                     ) : null}

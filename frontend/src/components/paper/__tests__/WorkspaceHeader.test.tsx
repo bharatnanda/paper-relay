@@ -27,13 +27,13 @@ test('calls onReadingLevelChange when Technical is clicked', async () => {
 test('clicking Chat sets rightPanel to chat', async () => {
   const spy = vi.fn();
   render(<WorkspaceHeader {...defaultProps} onRightPanelChange={spy} />);
-  await userEvent.click(screen.getByText('Chat'));
+  await userEvent.click(screen.getByText('Chat with paper'));
   expect(spy).toHaveBeenCalledWith('chat');
 });
 
 test('clicking Chat when chat is active sets rightPanel to null', async () => {
   const spy = vi.fn();
   render(<WorkspaceHeader {...defaultProps} rightPanel="chat" onRightPanelChange={spy} />);
-  await userEvent.click(screen.getByText('Chat'));
+  await userEvent.click(screen.getByText('Hide chat'));
   expect(spy).toHaveBeenCalledWith(null);
 });

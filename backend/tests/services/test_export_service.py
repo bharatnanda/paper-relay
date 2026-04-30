@@ -24,6 +24,7 @@ class TestExportService:
             "problem_and_motivation": "Why this paper exists",
             "method_deep_dive": "How the method works",
             "results_and_evidence": "The evidence is strong",
+            "bottom_line_verdict": "Promising paper with meaningful but scoped evidence.",
             "guided_walkthrough": "A longer walkthrough",
             "limitations_and_caveats": "A few caveats",
             "key_contributions": ["Contribution 1"],
@@ -89,6 +90,7 @@ class TestExportService:
         assert "## ELI5" in md
         assert "## How the Paper Works" in md
         assert "## Results and Evidence" in md
+        assert "## Bottom Line Verdict" in md
         assert "## Guided Walkthrough" in md
         assert "## Limitations and Caveats" in md
         assert "## Key Findings" in md

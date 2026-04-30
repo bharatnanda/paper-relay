@@ -129,6 +129,7 @@ class AnalysisSummary(BaseModel):
     core_intuition: Optional[str] = None
     authors_claims: Optional[str] = None
     evidence_assessment: Optional[str] = None
+    bottom_line_verdict: Optional[str] = None
     critique: Optional[CritiqueSummary] = None
     reader_takeaways: List[str] = Field(default_factory=list)
     section_breakdown: List[DistilledSection] = Field(default_factory=list)
@@ -147,6 +148,7 @@ class AnalysisSummary(BaseModel):
         data.setdefault("technical", data.get("technical_summary", ""))
         data.setdefault("method_deep_dive", data.get("technical"))
         data.setdefault("evidence_assessment", data.get("results_and_evidence"))
+        data.setdefault("bottom_line_verdict", data.get("evidence_assessment"))
         return cls.model_validate(data)
 
     @classmethod
@@ -184,6 +186,7 @@ class AnalysisSummary(BaseModel):
             core_intuition=data.get("core_intuition"),
             authors_claims=data.get("authors_claims"),
             evidence_assessment=data.get("evidence_assessment"),
+            bottom_line_verdict=data.get("bottom_line_verdict"),
             critique=critique,
             reader_takeaways=data.get("reader_takeaways") or [],
             section_breakdown=data.get("section_breakdown") or section_breakdown or [],

@@ -1,10 +1,9 @@
 import React, { useState } from 'react';
 import { Box, Button, Chip, Collapse, Divider, Paper, Stack, Typography } from '@mui/material';
-import { ArtifactInterpretation, FigureCaption, ExtractedTable, ResultsView } from '../../../types';
+import { ArtifactInterpretation, FigureCaption, ExtractedTable } from '../../../types';
 
 interface EvidenceSectionProps {
   content?: string;
-  resultsView?: ResultsView;
   artifactInterpretations?: ArtifactInterpretation[];
   figureCaptions?: FigureCaption[];
   tables?: ExtractedTable[];
@@ -18,7 +17,6 @@ const confidenceColor = (c?: string): 'success' | 'warning' | 'default' => {
 
 export const EvidenceSection: React.FC<EvidenceSectionProps> = ({
   content,
-  resultsView,
   artifactInterpretations = [],
   figureCaptions = [],
   tables = [],
@@ -40,12 +38,6 @@ export const EvidenceSection: React.FC<EvidenceSectionProps> = ({
           <Typography variant="body1" color="text.secondary">{content}</Typography>
         )}
 
-        {resultsView?.evaluation_setup && (
-          <Typography variant="body2" color="text.secondary">
-            <strong>Evaluation setup:</strong> {resultsView.evaluation_setup}
-          </Typography>
-        )}
-
         {artifactInterpretations.length > 0 && (
           <Stack spacing={1.25}>
             {artifactInterpretations.map((item, i) => (
@@ -53,7 +45,11 @@ export const EvidenceSection: React.FC<EvidenceSectionProps> = ({
                 <Stack spacing={0.75}>
                   <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
                     <Typography variant="subtitle2" fontWeight={700}>{item.label}</Typography>
-                    <Chip size="small" label={item.artifact_type === 'table' ? 'Table' : 'Figure'} variant="outlined" />
+                    <Chip
+                      size="small"
+                      label={item.artifact_type === 'table' ? 'Table' : item.artifact_type === 'figure' ? 'Figure' : item.artifact_type}
+                      variant="outlined"
+                    />
                     {item.confidence && (
                       <Chip
                         size="small"

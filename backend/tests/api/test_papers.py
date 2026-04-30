@@ -236,6 +236,7 @@ class TestPapersAPI:
             "core_intuition": "Core idea",
             "authors_claims": "Claims",
             "evidence_assessment": "Evidence",
+            "bottom_line_verdict": "Promising contribution with evidence limited to this setup.",
             "method_deep_dive": "Method",
             "results_and_evidence": "Results",
             "limitations_and_caveats": "Limits",
@@ -263,3 +264,4 @@ class TestPapersAPI:
         assert resp.status_code == 200
         assert resp.json()["summary"]["quick"] == "Quick summary"
         assert resp.json()["summary"]["prior_work_and_gap"] == "Prior work"
+        assert resp.json()["summary"]["bottom_line_verdict"] == "Promising contribution with evidence limited to this setup."

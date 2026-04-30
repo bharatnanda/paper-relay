@@ -79,7 +79,7 @@ export const KnowledgeGraphViz: React.FC<KnowledgeGraphVizProps> = ({ data }) =>
 
     const colorScale = d3.scaleOrdinal<string>()
       .domain(['method', 'dataset', 'metric', 'concept'])
-      .range([theme.palette.primary.main, theme.palette.secondary.main, theme.palette.warning.main, '#8b5cf6']);
+      .range([theme.palette.primary.main, theme.palette.secondary.main, theme.palette.warning.main, '#4f6b92']);
 
     const simulation = d3.forceSimulation()
       .nodes(data.nodes as any)

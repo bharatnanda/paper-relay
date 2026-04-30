@@ -119,6 +119,8 @@ class PDFParser:
             candidate = " ".join(line.strip().split())
             if len(candidate) < 10 or len(candidate) > 180:
                 continue
+            if "$" in candidate or "\\[" in candidate or "\\]" in candidate:
+                continue
             if candidate.endswith(".") and "=" not in candidate:
                 continue
             if not self.EQUATION_LINE_RE.search(candidate):
@@ -220,6 +222,8 @@ class PDFParser:
                 if re.match(r'^(Figure|Fig\.|Table)\s*\d+', candidate, re.I):
                     break
                 if len(candidate) < 6:
+                    break
+                if candidate[:1].isupper():
                     break
                 continuation.append(candidate)
             if continuation:

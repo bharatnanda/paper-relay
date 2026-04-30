@@ -121,6 +121,7 @@ class AIProcessor:
         normalized.setdefault("technical", normalized.get("technical_summary", ""))
         normalized.setdefault("method_deep_dive", normalized.get("technical"))
         normalized.setdefault("evidence_assessment", normalized.get("results_and_evidence"))
+        normalized.setdefault("bottom_line_verdict", normalized.get("evidence_assessment"))
         return normalized
 
     def _coerce_summary(self, synthesis: Dict[str, Any] | AnalysisSummary) -> AnalysisSummary:
@@ -789,6 +790,7 @@ Return strict JSON:
   "core_intuition": "the central idea of the paper in one plain-English paragraph before any formulas or notation",
   "authors_claims": "what the paper explicitly asserts as its contribution and conclusion",
   "evidence_assessment": "what the extracted evidence actually supports; note any gap between this and authors_claims",
+  "bottom_line_verdict": "a short bottom-line judgment about how convincing the paper is, what it contributes, and what a careful reader should conclude",
   "method_deep_dive": "how the approach works",
   "results_and_evidence": "what evidence the paper shows",
   "limitations_and_caveats": "limitations, tradeoffs, or missing evidence",
@@ -808,6 +810,7 @@ Return strict JSON:
             "core_intuition": paper_map.get("proposed_solution", ""),
             "authors_claims": metadata.get("abstract", ""),
             "evidence_assessment": results_view.get("results_summary", ""),
+            "bottom_line_verdict": results_view.get("results_summary", metadata.get("abstract", "")),
             "method_deep_dive": "Method summary unavailable",
             "results_and_evidence": results_view.get("results_summary", "Results summary unavailable"),
             "limitations_and_caveats": "; ".join(self._coerce_list(results_view.get("caveats"))),
@@ -864,7 +867,8 @@ Return strict JSON with the same keys for:
   "prior_work_and_gap": "expanded prior work context if too brief",
   "core_intuition": "expanded core intuition if too vague",
   "authors_claims": "expanded authors claims if too vague",
-  "evidence_assessment": "expanded evidence assessment if too vague"
+  "evidence_assessment": "expanded evidence assessment if too vague",
+  "bottom_line_verdict": "expanded bottom-line conclusion if too vague"
 }}"""
 
         fallback = {
@@ -876,6 +880,7 @@ Return strict JSON with the same keys for:
             "core_intuition": synthesis.core_intuition or "",
             "authors_claims": synthesis.authors_claims or "",
             "evidence_assessment": synthesis.evidence_assessment or "",
+            "bottom_line_verdict": synthesis.bottom_line_verdict or "",
         }
         result = await self._chat_json(
             "You deepen shallow research paper summaries without inventing facts.",
@@ -894,6 +899,7 @@ Return strict JSON with the same keys for:
             "core_intuition": result.get("core_intuition", synthesis.core_intuition),
             "authors_claims": result.get("authors_claims", synthesis.authors_claims),
             "evidence_assessment": result.get("evidence_assessment", synthesis.evidence_assessment),
+            "bottom_line_verdict": result.get("bottom_line_verdict", synthesis.bottom_line_verdict),
         })
 
     @retry(
@@ -953,6 +959,7 @@ Distillation fields to review:
 - results_and_evidence: {(synthesis.results_and_evidence or '')[:600]}
 - authors_claims: {(synthesis.authors_claims or '')[:500]}
 - evidence_assessment: {(synthesis.evidence_assessment or '')[:500]}
+- bottom_line_verdict: {(synthesis.bottom_line_verdict or '')[:500]}
 - limitations_and_caveats: {(synthesis.limitations_and_caveats or '')[:500]}
 - guided_walkthrough (first 900 chars): {(synthesis.guided_walkthrough or '')[:900]}
 
@@ -968,7 +975,7 @@ Return strict JSON:
   "overall_assessment": "one sentence",
   "issues": [
     {{
-      "field": "method_deep_dive|results_and_evidence|limitations_and_caveats|guided_walkthrough|problem_and_motivation|authors_claims|evidence_assessment|eli5",
+      "field": "method_deep_dive|results_and_evidence|limitations_and_caveats|guided_walkthrough|problem_and_motivation|authors_claims|evidence_assessment|bottom_line_verdict|eli5",
       "severity": "high|medium|low",
       "type": "overclaim|missing_caveat|vague_method|evidence_gap|coverage_gap",
       "description": "specific problem in under 80 words",
@@ -1124,7 +1131,7 @@ Return strict JSON:
     REFORMAT_PROSE_FIELDS = [
         "guided_walkthrough", "method_deep_dive", "eli5",
         "problem_and_motivation", "core_intuition", "prior_work_and_gap",
-        "authors_claims", "evidence_assessment",
+        "authors_claims", "evidence_assessment", "bottom_line_verdict",
     ]
 
     READING_LEVEL_INSTRUCTIONS = {
@@ -1152,6 +1159,7 @@ Return strict JSON:
             "prior_work_and_gap": summary_json.get("prior_work_and_gap") or "",
             "authors_claims": summary_json.get("authors_claims") or "",
             "evidence_assessment": summary_json.get("evidence_assessment") or summary_json.get("results_and_evidence") or "",
+            "bottom_line_verdict": summary_json.get("bottom_line_verdict") or summary_json.get("evidence_assessment") or summary_json.get("results_and_evidence") or "",
         }
         if self.client is None:
             return source_fields
@@ -1230,6 +1238,8 @@ Results: {(summary_json.get('results_and_evidence') or '')[:500]}
 What authors claim: {(summary_json.get('authors_claims') or '')[:400]}
 
 Evidence assessment: {(summary_json.get('evidence_assessment') or summary_json.get('results_and_evidence') or '')[:400]}
+
+Bottom line verdict: {(summary_json.get('bottom_line_verdict') or summary_json.get('evidence_assessment') or '')[:400]}
 
 Limitations: {(summary_json.get('limitations_and_caveats') or '')[:400]}
 

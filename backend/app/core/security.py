@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from jose import jwt, JWTError
 import secrets
@@ -6,19 +6,20 @@ import secrets
 from app.core.config import settings
 
 ALGORITHM = "HS256"
-SERVER_SESSION_EPOCH = int(datetime.utcnow().timestamp())
+UTC = timezone.utc
+SERVER_SESSION_EPOCH = int(datetime.now(UTC).timestamp())
 
 def generate_magic_token() -> str:
     return secrets.token_urlsafe(32)
 
 def create_magic_link_token(email: str) -> tuple[str, datetime]:
-    expire = datetime.utcnow() + timedelta(hours=settings.MAGIC_LINK_EXPIRY_HOURS)
+    expire = datetime.now(UTC) + timedelta(hours=settings.MAGIC_LINK_EXPIRY_HOURS)
     to_encode = {"email": email, "exp": expire, "type": "magic_link"}
     encoded_jwt = jwt.encode(to_encode, settings.MAGIC_LINK_SECRET, algorithm=ALGORITHM)
     return encoded_jwt, expire
 
 def create_session_token(email: str) -> str:
-    expire = datetime.utcnow() + timedelta(days=7)
+    expire = datetime.now(UTC) + timedelta(days=7)
     to_encode = {
         "email": email,
         "exp": expire,

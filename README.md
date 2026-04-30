@@ -10,7 +10,7 @@ PaperRelay is no longer just a short summary flow. The current product is built 
 - background paper analysis with progress tracking
 - a multi-pass distillation pipeline instead of a single short summary prompt
 - a canonical typed backend summary contract shared across persistence, API responses, export, chat, reformat, and public share flows
-- section-aware walkthroughs that cover motivation, method, results, and limitations
+- section-aware walkthroughs that cover problem, prior work, core idea, method, evaluation, evidence, verdict, and takeaways
 - interpreted evidence from extracted figures and tables
 - formula explanations with nearby context when equation extraction succeeds
 - a grounded knowledge graph built from paper concepts, interpreted evidence, and LLM-generated relationship triples
@@ -40,7 +40,7 @@ High-level flow:
 4. Interpret tables and figures as evidence objects instead of treating them as raw snapshots only.
 5. Explain math using extracted equations or method-context fallback; each formula includes an intuition, prerequisite list, and location hint.
 6. Generate LLM relationship triples between key terms for the knowledge graph.
-7. Synthesize the final user-facing distillation — including `prior_work_and_gap`, `core_intuition`, `authors_claims`, and `evidence_assessment` alongside the existing fields.
+7. Synthesize the final user-facing distillation — including `prior_work_and_gap`, `core_intuition`, `authors_claims`, `evidence_assessment`, and `bottom_line_verdict` alongside the existing fields.
 8. Run a critic pass to flag overclaims, missing caveats, vague method descriptions, and evidence gaps; conditionally revise flagged fields.
 9. Build the knowledge graph with LLM-generated edges as high-confidence connections.
 
@@ -72,6 +72,7 @@ Frontend structure:
 - completion notifications live in `useAnalysisCompletionNotice`
 - reading-level mutation flow lives in `usePaperReadingLevel`
 - right-panel viewer/chat state lives in `usePaperRightPanel`
+- heavy routes and workspace panels are lazy-loaded so chat, graph, and secondary pages do not all ship in the initial frontend path
 
 This is a materially simpler architecture than the original implementation, where contract mapping, workflow rules, and long-running orchestration were spread across routes, workers, export code, and frontend page components.
 
@@ -150,12 +151,16 @@ The frontend is centered on a single authenticated shell:
 The paper page now includes:
 
 - `Anatomy`, `Math`, and `Knowledge Graph` tabs
+- a first-class anatomy flow for problem, prior work, core idea, method, evaluation, evidence, verdict, and takeaways
+- a sticky jump-to-section navigation strip inside long anatomy views
 - reading-level switching between `general`, `technical`, and `eli5`
-- evaluation setup and strongest evidence callouts
+- explicit evaluation setup and bottom-line verdict sections
+- strongest evidence callouts and interpreted evidence cards
 - interpreted evidence cards with confidence labels
 - extracted figure/table context
 - a toggleable original-paper PDF viewer
 - a built-in chat panel for follow-up questions on completed analyses
+- a more informative workspace header with paper title, authors, arXiv ID, and responsive controls
 - in-app and browser completion notifications for background jobs
 
 The paper workspace has also been decomposed into focused hooks so page-level state is split across:
@@ -180,6 +185,7 @@ Exports now include:
 - paper title, authors, arXiv ID
 - original paper URL and source PDF URL
 - the richer distillation sections
+- explicit bottom-line verdict rendering
 - interpreted evidence from figures and tables
 - formula explanations
 - knowledge graph summaries
@@ -192,7 +198,7 @@ Completed analyses can be shared publicly with a generated link.
 
 Shared links now return the same canonical summary shape used by the authenticated paper API, so shared-paper views and logged-in paper views stay aligned on:
 
-- anatomy fields such as `prior_work_and_gap`, `core_intuition`, `authors_claims`, and `evidence_assessment`
+- anatomy fields such as `prior_work_and_gap`, `core_intuition`, `authors_claims`, `evidence_assessment`, and `bottom_line_verdict`
 - interpreted evidence
 - typed knowledge-graph payloads
 

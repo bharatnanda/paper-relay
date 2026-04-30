@@ -72,6 +72,7 @@ class TestProcessPaperTask:
                 "core_intuition": "Core intuition.",
                 "authors_claims": "Authors claims.",
                 "evidence_assessment": "Evidence assessment.",
+                "bottom_line_verdict": "The paper is promising but needs broader validation.",
                 "method_deep_dive": "Method details.",
                 "results_and_evidence": "Results details.",
                 "limitations_and_caveats": "Limitations.",
@@ -109,4 +110,5 @@ class TestProcessPaperTask:
         assert analysis.summary_json["core_intuition"] == "Core intuition."
         assert analysis.summary_json["authors_claims"] == "Authors claims."
         assert analysis.summary_json["evidence_assessment"] == "Evidence assessment."
+        assert analysis.summary_json["bottom_line_verdict"] == "The paper is promising but needs broader validation."
         assert analysis.summary_json["quick"] == "Quick summary."
