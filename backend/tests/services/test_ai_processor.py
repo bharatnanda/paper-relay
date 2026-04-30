@@ -1,6 +1,7 @@
 import json
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+from app.schemas.paper import AnalysisSummary
 from app.services.ai_processor import AIProcessor
 
 
@@ -66,8 +67,8 @@ class TestAIProcessor:
             {"evaluation_setup": "Setup", "results_summary": "Results", "strongest_evidence": ["evidence"], "caveats": ["caveat"], "artifact_interpretations": [{"artifact_type": "table", "label": "Table 1", "section_title": "Results", "what_it_shows": "Main comparison", "why_it_matters": "Shows the win", "confidence": "medium"}]},
             {"formulas": [{"latex": "score = reward", "plain_explanation": "Explains the score", "symbols": {"score": "final score"}, "importance": "Core objective"}]},
             {"terms": [{"term": "GAAMA", "category": "method", "definition": "Memory framework", "mentions": 7}]},
-            {"quick_summary": "Test quick summary", "guided_walkthrough": "A longer guided walkthrough of the whole paper that covers the sections in order.", "eli5_explanation": "A longer plain-language explanation that is detailed enough for a non-expert reader to follow the paper.", "technical_summary": "Technical summary", "problem_and_motivation": "Problem", "method_deep_dive": "Method", "results_and_evidence": "Results", "limitations_and_caveats": "Caveats", "key_contributions": ["Contribution"], "key_findings": ["Finding"], "reader_takeaways": ["Takeaway"], "section_breakdown": [{"title": "Introduction", "summary": "Intro summary", "why_it_matters": "It frames the paper"}]},
-            {"guided_walkthrough": "Expanded guided walkthrough for a non-expert reader with more detail.", "eli5_explanation": "Expanded ELI5 explanation for a non-expert reader with more detail.", "method_deep_dive": "Expanded method explanation.", "limitations_and_caveats": "Expanded caveats."},
+            {"quick": "Test quick summary", "guided_walkthrough": "A longer guided walkthrough of the whole paper that covers the sections in order.", "eli5": "A longer plain-language explanation that is detailed enough for a non-expert reader to follow the paper.", "technical": "Technical summary", "problem_and_motivation": "Problem", "method_deep_dive": "Method", "results_and_evidence": "Results", "limitations_and_caveats": "Caveats", "key_contributions": ["Contribution"], "key_findings": ["Finding"], "reader_takeaways": ["Takeaway"], "section_breakdown": [{"title": "Introduction", "summary": "Intro summary", "why_it_matters": "It frames the paper"}]},
+            {"guided_walkthrough": "Expanded guided walkthrough for a non-expert reader with more detail.", "eli5": "Expanded ELI5 explanation for a non-expert reader with more detail.", "method_deep_dive": "Expanded method explanation.", "limitations_and_caveats": "Expanded caveats."},
         ]
 
         with patch.object(processor, '_chat_json', AsyncMock(side_effect=responses)):
@@ -101,9 +102,9 @@ class TestAIProcessor:
                     ],
                 },
             )
-            assert "quick_summary" in result
+            assert "quick" in result
             assert "guided_walkthrough" in result
-            assert "eli5_explanation" in result
+            assert "eli5" in result
             assert "section_breakdown" in result
             assert "paper_map" in result
             assert "results_view" in result
@@ -405,10 +406,10 @@ class TestAIProcessor:
     async def test_synthesize_distillation_returns_new_anatomy_fields(self, processor):
         """New anatomy fields must be present in synthesize_distillation output."""
         mock_response = {
-            "quick_summary": "Short summary.",
+            "quick": "Short summary.",
             "guided_walkthrough": "A" * 900,
-            "eli5_explanation": "B" * 500,
-            "technical_summary": "Technical.",
+            "eli5": "B" * 500,
+            "technical": "Technical.",
             "problem_and_motivation": "The problem.",
             "prior_work_and_gap": "Prior work used X. This paper noticed gap Y.",
             "core_intuition": "The central idea is Z.",
@@ -434,21 +435,23 @@ class TestAIProcessor:
                 metadata, paper_map, section_breakdown, results_view,
                 formula_explanations, terms
             )
-        assert result["prior_work_and_gap"] == "Prior work used X. This paper noticed gap Y."
-        assert result["core_intuition"] == "The central idea is Z."
-        assert result["authors_claims"] == "Authors claim state-of-the-art on benchmarks."
-        assert result["evidence_assessment"] == "Evidence supports moderate gains; strong claim on one dataset."
+        assert result.prior_work_and_gap == "Prior work used X. This paper noticed gap Y."
+        assert result.core_intuition == "The central idea is Z."
+        assert result.authors_claims == "Authors claim state-of-the-art on benchmarks."
+        assert result.evidence_assessment == "Evidence supports moderate gains; strong claim on one dataset."
 
     @pytest.mark.anyio
     async def test_critique_distillation_flags_overclaim(self, processor):
-        synthesis = {
-            "quick_summary": "The model achieves state-of-the-art on all benchmarks.",
+        synthesis = AnalysisSummary.model_validate({
+            "quick": "The model achieves state-of-the-art on all benchmarks.",
+            "eli5": "",
+            "technical": "",
             "method_deep_dive": "We use a novel approach.",
             "results_and_evidence": "Our method beats all baselines by 20%.",
             "limitations_and_caveats": "",
             "authors_claims": "State-of-the-art across all tasks.",
             "evidence_assessment": "",
-        }
+        })
         paper_map = {
             "main_question": "Can X solve Y?",
             "proposed_solution": "A new model",
@@ -493,24 +496,39 @@ class TestAIProcessor:
             "issues": [],
         }
         with patch.object(processor, '_chat_json', AsyncMock(return_value=mock_response)):
-            result = await processor.critique_distillation({}, {}, [], {}, {"title": "T"})
+            result = await processor.critique_distillation(
+                AnalysisSummary.model_validate({"quick": "", "eli5": "", "technical": ""}),
+                {},
+                [],
+                {},
+                {"title": "T"},
+            )
         assert result["needs_revision"] is False
         assert result["issues"] == []
 
     @pytest.mark.anyio
     async def test_critique_distillation_handles_bad_response(self, processor):
         with patch.object(processor, '_chat_json', AsyncMock(return_value="not a dict")):
-            result = await processor.critique_distillation({}, {}, [], {}, {"title": "T"})
+            result = await processor.critique_distillation(
+                AnalysisSummary.model_validate({"quick": "", "eli5": "", "technical": ""}),
+                {},
+                [],
+                {},
+                {"title": "T"},
+            )
         assert result["needs_revision"] is False
         assert result["issues"] == []
 
     @pytest.mark.anyio
     async def test_revise_with_critique_updates_only_affected_fields(self, processor):
-        synthesis = {
+        synthesis = AnalysisSummary.model_validate({
+            "quick": "",
+            "eli5": "",
+            "technical": "",
             "results_and_evidence": "Our method beats all baselines by 20%.",
             "method_deep_dive": "We use a novel approach.",
             "limitations_and_caveats": "No limitations noted.",
-        }
+        })
         critique = {
             "needs_revision": True,
             "issues": [{
@@ -529,18 +547,23 @@ class TestAIProcessor:
         with patch.object(processor, '_chat_json', AsyncMock(return_value=mock_revision)):
             result = await processor.revise_with_critique(synthesis, critique, paper_map, metadata)
 
-        assert result["results_and_evidence"] == "Our method shows competitive performance against baselines."
-        assert result["method_deep_dive"] == "We use a novel approach."
-        assert result["limitations_and_caveats"] == "No limitations noted."
+        assert result.results_and_evidence == "Our method shows competitive performance against baselines."
+        assert result.method_deep_dive == "We use a novel approach."
+        assert result.limitations_and_caveats == "No limitations noted."
 
     @pytest.mark.anyio
     async def test_revise_with_critique_returns_original_on_bad_response(self, processor):
-        synthesis = {"method_deep_dive": "Original text."}
+        synthesis = AnalysisSummary.model_validate({
+            "quick": "",
+            "eli5": "",
+            "technical": "",
+            "method_deep_dive": "Original text.",
+        })
         critique = {"issues": [{"field": "method_deep_dive", "type": "vague_method", "severity": "medium",
                                  "description": "Too vague.", "suggested_fix": "Add detail."}]}
         with patch.object(processor, '_chat_json', AsyncMock(return_value=None)):
             result = await processor.revise_with_critique(synthesis, critique, {}, {"title": "T"})
-        assert result["method_deep_dive"] == "Original text."
+        assert result.method_deep_dive == "Original text."
 
     @pytest.mark.anyio
     async def test_generate_relationships_returns_triples(self, processor):
@@ -581,7 +604,7 @@ class TestAIProcessor:
         summary_json = {
             "guided_walkthrough": "The paper introduces a novel attention mechanism applied to...",
             "method_deep_dive": "Using multi-head self-attention layers with position encodings...",
-            "eli5_explanation": "Think of the model like a reader who...",
+            "eli5": "Think of the model like a reader who...",
             "problem_and_motivation": "Current NLP models fail to capture long-range dependencies...",
             "core_intuition": "The key insight is that every word should attend to every other word.",
             "prior_work_and_gap": "Previous recurrent models processed sequences step by step.",
@@ -589,7 +612,7 @@ class TestAIProcessor:
         mock_response = {
             "guided_walkthrough": "In really simple terms, this paper shows a new way...",
             "method_deep_dive": "The approach works by letting every word look at every other word...",
-            "eli5_explanation": "Imagine you have a magic highlighter...",
+            "eli5": "Imagine you have a magic highlighter...",
             "problem_and_motivation": "The problem was that old models had to read words one at a time...",
             "core_intuition": "The big idea: every word should pay attention to every other word at once.",
             "prior_work_and_gap": "Before this, models read words one at a time like reading left to right.",
@@ -611,10 +634,30 @@ class TestAIProcessor:
         assert result["guided_walkthrough"] == "Original text."
 
     @pytest.mark.anyio
+    async def test_reformat_for_audience_uses_canonical_summary_fields(self, processor):
+        summary_json = {
+            "guided_walkthrough": "Stored walkthrough.",
+            "technical": "Stored technical summary.",
+            "eli5": "Stored ELI5 summary.",
+            "problem_and_motivation": "Stored problem.",
+            "results_and_evidence": "Stored evidence summary.",
+        }
+        processor.client = object()
+
+        with patch.object(processor, '_chat_json', AsyncMock(return_value=None)):
+            result = await processor.reformat_for_audience(summary_json, "technical")
+
+        assert result["guided_walkthrough"] == "Stored walkthrough."
+        assert result["method_deep_dive"] == "Stored technical summary."
+        assert result["eli5"] == "Stored ELI5 summary."
+        assert result["problem_and_motivation"] == "Stored problem."
+        assert result["evidence_assessment"] == "Stored evidence summary."
+
+    @pytest.mark.anyio
     async def test_chat_with_paper_returns_reply_string(self, processor):
         messages = [{"role": "user", "content": "What is the main contribution?"}]
         summary_json = {
-            "quick_summary": "The paper introduces X.",
+            "quick": "The paper introduces X.",
             "method_deep_dive": "Using Y approach...",
             "guided_walkthrough": "First, the authors...",
             "results_and_evidence": "Results show...",
@@ -644,3 +687,33 @@ class TestAIProcessor:
         )
         assert isinstance(result, str)
         assert len(result) > 0
+
+    @pytest.mark.anyio
+    async def test_chat_with_paper_uses_persisted_summary_keys_in_prompt(self, processor):
+        messages = [{"role": "user", "content": "Summarize the paper."}]
+        summary_json = {
+            "quick": "Stored quick summary.",
+            "technical": "Stored technical summary.",
+            "results_and_evidence": "Stored evidence summary.",
+            "limitations_and_caveats": "Stored limitations.",
+            "guided_walkthrough": "Stored walkthrough.",
+            "terms": [],
+            "formula_explanations": [],
+        }
+
+        mock_choice = MagicMock()
+        mock_choice.message.content = json.dumps({"reply": "Summary reply."})
+        mock_response = MagicMock()
+        mock_response.choices = [mock_choice]
+
+        processor.client = MagicMock()
+        processor.client.chat.completions.create = AsyncMock(return_value=mock_response)
+
+        result = await processor.chat_with_paper(messages, summary_json)
+
+        assert result == "Summary reply."
+        create_call = processor.client.chat.completions.create.await_args
+        system_prompt = create_call.kwargs["messages"][0]["content"]
+        assert "Quick summary: Stored quick summary." in system_prompt
+        assert "Method: Stored technical summary." in system_prompt
+        assert "Evidence assessment: Stored evidence summary." in system_prompt

@@ -1,5 +1,5 @@
 // frontend/src/pages/PaperPage.tsx
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Box, Button, Container, Drawer, Paper, Snackbar, Alert,
@@ -9,7 +9,10 @@ import { useTheme } from '@mui/material/styles';
 import OpenInNewRoundedIcon from '@mui/icons-material/OpenInNewRounded';
 import CloseRoundedIcon from '@mui/icons-material/CloseRounded';
 import { useAuth } from '../hooks/useAuth';
-import { AppErrorInfo, getApiErrorInfo, papersAPI } from '../services/api';
+import { usePaperAnalysis } from '../hooks/usePaperAnalysis';
+import { useAnalysisCompletionNotice } from '../hooks/useAnalysisCompletionNotice';
+import { usePaperReadingLevel } from '../hooks/usePaperReadingLevel';
+import { usePaperRightPanel } from '../hooks/usePaperRightPanel';
 import { LoadingSpinner } from '../components/common/LoadingSpinner';
 import { ErrorBanner } from '../components/common/ErrorBanner';
 import { ProcessingProgress } from '../components/common/ProcessingProgress';
@@ -20,10 +23,7 @@ import { ChatPanel } from '../components/paper/ChatPanel';
 import { KnowledgeGraphViz } from '../components/paper/KnowledgeGraphViz';
 import { TermGlossary } from '../components/paper/TermGlossary';
 import { FormulaBlock } from '../components/paper/FormulaBlock';
-import { PaperAnalysis, FormulaExplanation } from '../types';
-
-type ReadingLevel = 'general' | 'technical' | 'eli5';
-type RightPanel = 'paper' | 'chat' | null;
+import { FormulaExplanation } from '../types';
 
 const getProcessingFailureHint = (errorMessage?: string) => {
   const normalized = errorMessage?.toLowerCase() || '';
@@ -42,103 +42,16 @@ export const PaperPage: React.FC = () => {
   const navigate = useNavigate();
   const theme = useTheme();
   const isDesktop = useMediaQuery(theme.breakpoints.up('lg'));
-
-  const [analysis, setAnalysis] = useState<PaperAnalysis | null>(null);
-  const [displaySummary, setDisplaySummary] = useState<PaperAnalysis['summary']>(undefined);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<AppErrorInfo | null>(null);
   const [tab, setTab] = useState(0);
-  const [reloadKey, setReloadKey] = useState(0);
-  const [readingLevel, setReadingLevel] = useState<ReadingLevel>('general');
-  const [rightPanel, setRightPanel] = useState<RightPanel>(null);
-  const [reformatError, setReformatError] = useState(false);
-  const [completionNoticeOpen, setCompletionNoticeOpen] = useState(false);
-  const previousStatusRef = useRef<PaperAnalysis['status'] | null>(null);
-
-  // Fetch + poll
-  useEffect(() => {
-    if (!user || !paperId) { navigate('/'); return; }
-    let mounted = true;
-    let timeoutId: ReturnType<typeof setTimeout> | null = null;
-
-    const fetchAnalysis = async () => {
-      try {
-        const result = await papersAPI.getAnalysis(paperId, user.token);
-        if (!mounted) return;
-        setAnalysis(result);
-        setDisplaySummary(result.summary);
-        setError(null);
-        if (result.status === 'processing' || result.status === 'pending')
-          timeoutId = setTimeout(fetchAnalysis, 3000);
-      } catch (err: any) {
-        if (!mounted) return;
-        setError(getApiErrorInfo(err, 'Failed to load the paper analysis.'));
-      } finally {
-        if (mounted) setLoading(false);
-      }
-    };
-
-    fetchAnalysis();
-    return () => { mounted = false; if (timeoutId) clearTimeout(timeoutId); };
-  }, [paperId, user, navigate, reloadKey]);
-
-  // Completion notification
-  useEffect(() => {
-    if (!paperId || !analysis) return;
-    const watchKey = `paperrelay-analysis-watch:${paperId}`;
-    const notifiedKey = `paperrelay-analysis-complete:${paperId}`;
-    const permissionKey = `paperrelay-notification-permission-requested:${paperId}`;
-    const previousStatus = previousStatusRef.current;
-
-    if (analysis.status === 'processing' || analysis.status === 'pending') {
-      sessionStorage.setItem(watchKey, '1');
-      sessionStorage.removeItem(notifiedKey);
-      if ('Notification' in window && Notification.permission === 'default' && !sessionStorage.getItem(permissionKey)) {
-        sessionStorage.setItem(permissionKey, '1');
-        Notification.requestPermission().catch(() => undefined);
-      }
-    }
-
-    const wasBeingTracked = sessionStorage.getItem(watchKey) === '1';
-    const alreadyNotified = sessionStorage.getItem(notifiedKey) === '1';
-    const transitionedToComplete = analysis.status === 'complete' && previousStatus !== 'complete' && previousStatus !== null;
-    const completedAfterWatch = analysis.status === 'complete' && wasBeingTracked && !alreadyNotified;
-
-    if (transitionedToComplete || completedAfterWatch) {
-      setCompletionNoticeOpen(true);
-      sessionStorage.setItem(notifiedKey, '1');
-      sessionStorage.removeItem(watchKey);
-      if ('Notification' in window && Notification.permission === 'granted' && document.visibilityState === 'hidden') {
-        const notification = new Notification('PaperRelay analysis ready', {
-          body: analysis.title || 'Your paper distillation is complete.',
-          tag: `paperrelay-analysis-${paperId}`,
-        });
-        notification.onclick = () => { window.focus(); notification.close(); };
-      }
-    }
-    if (analysis.status === 'failed') sessionStorage.removeItem(watchKey);
-    previousStatusRef.current = analysis.status;
-  }, [analysis, paperId]);
-
-  // Reading level change — calls reformat, merges fields into displaySummary
-  const handleReadingLevelChange = async (level: ReadingLevel) => {
-    setReadingLevel(level);
-    if (level === 'general') {
-      setDisplaySummary(analysis?.summary);
-      return;
-    }
-    if (!paperId || !user) return;
-    try {
-      const { reformatted_fields } = await papersAPI.reformat(paperId, level, user.token);
-      setDisplaySummary((prev) => prev ? { ...prev, ...reformatted_fields } : prev);
-    } catch {
-      setReformatError(true);
-      setReadingLevel('general');
-      setDisplaySummary(analysis?.summary);
-    }
-  };
-
-  const handleRightPanelChange = (panel: RightPanel) => setRightPanel(panel);
+  const { analysis, displaySummary, setDisplaySummary, loading, error, reload } = usePaperAnalysis(paperId, user);
+  const { completionNoticeOpen, closeCompletionNotice } = useAnalysisCompletionNotice(paperId, analysis);
+  const { readingLevel, reformatError, closeReformatError, handleReadingLevelChange } = usePaperReadingLevel({
+    paperId,
+    user,
+    analysis,
+    setDisplaySummary,
+  });
+  const { rightPanel, setRightPanel, closeRightPanel } = usePaperRightPanel();
 
   if (loading) return <LoadingSpinner message="Loading paper analysis..." />;
 
@@ -152,7 +65,7 @@ export const PaperPage: React.FC = () => {
             hint={error?.hint}
             actions={
               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
-                <Button variant="contained" onClick={() => { setLoading(true); setError(null); setReloadKey((v) => v + 1); }}>Retry</Button>
+                <Button variant="contained" onClick={reload}>Retry</Button>
                 <Button variant="outlined" onClick={() => navigate('/library')}>Back to library</Button>
               </Stack>
             }
@@ -175,7 +88,7 @@ export const PaperPage: React.FC = () => {
             actions={analysis.status === 'failed' ? (
               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
                 <Button variant="contained" onClick={() => navigate('/')}>Analyze another paper</Button>
-                <Button variant="outlined" onClick={() => setReloadKey((v) => v + 1)}>Refresh status</Button>
+                <Button variant="outlined" onClick={reload}>Refresh status</Button>
               </Stack>
             ) : undefined}
           />
@@ -200,7 +113,7 @@ export const PaperPage: React.FC = () => {
               <Button size="small" variant="outlined" endIcon={<OpenInNewRoundedIcon />} component="a" href={originalPaperUrl} target="_blank" rel="noreferrer">Open</Button>
             )}
             {!embedded && (
-              <Button size="small" variant="text" startIcon={<CloseRoundedIcon />} onClick={() => setRightPanel(null)}>Close</Button>
+              <Button size="small" variant="text" startIcon={<CloseRoundedIcon />} onClick={closeRightPanel}>Close</Button>
             )}
           </Stack>
         </Stack>
@@ -220,7 +133,7 @@ export const PaperPage: React.FC = () => {
   const renderRightPanel = () => {
     if (rightPanel === 'paper') return renderPaperViewer(true);
     if (rightPanel === 'chat') return (
-      <ChatPanel paperId={paperId!} token={user!.token} onClose={() => setRightPanel(null)} />
+      <ChatPanel paperId={paperId!} token={user!.token} onClose={closeRightPanel} />
     );
     return null;
   };
@@ -236,7 +149,7 @@ export const PaperPage: React.FC = () => {
             readingLevel={readingLevel}
             onReadingLevelChange={handleReadingLevelChange}
             rightPanel={rightPanel}
-            onRightPanelChange={handleRightPanelChange}
+            onRightPanelChange={setRightPanel}
             hasPaperUrl={!!originalPaperUrl}
           />
 
@@ -308,20 +221,20 @@ export const PaperPage: React.FC = () => {
       <Drawer
         anchor="right"
         open={rightPanel !== null && !isDesktop}
-        onClose={() => setRightPanel(null)}
+        onClose={closeRightPanel}
         PaperProps={{ sx: { width: '100%', maxWidth: 960 } }}
       >
         {renderRightPanel()}
       </Drawer>
 
-      <Snackbar open={reformatError} autoHideDuration={5000} onClose={() => setReformatError(false)} anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}>
-        <Alert severity="error" variant="filled" onClose={() => setReformatError(false)}>
+      <Snackbar open={reformatError} autoHideDuration={5000} onClose={closeReformatError} anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}>
+        <Alert severity="error" variant="filled" onClose={closeReformatError}>
           Could not reformat the paper. Reverted to General view.
         </Alert>
       </Snackbar>
 
-      <Snackbar open={completionNoticeOpen} autoHideDuration={6000} onClose={() => setCompletionNoticeOpen(false)} anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}>
-        <Alert onClose={() => setCompletionNoticeOpen(false)} severity="success" variant="filled" sx={{ width: '100%' }}>
+      <Snackbar open={completionNoticeOpen} autoHideDuration={6000} onClose={closeCompletionNotice} anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}>
+        <Alert onClose={closeCompletionNotice} severity="success" variant="filled" sx={{ width: '100%' }}>
           {analysis.title ? `Analysis ready: ${analysis.title}` : 'Paper analysis is ready.'}
         </Alert>
       </Snackbar>

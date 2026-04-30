@@ -4,11 +4,11 @@ import { Box, Typography, Container, Paper, Alert, Stack, Chip } from '@mui/mate
 import TravelExploreRoundedIcon from '@mui/icons-material/TravelExploreRounded';
 import { AppErrorInfo, getApiErrorInfo, shareAPI } from '../services/api';
 import { ErrorBanner } from '../components/common/ErrorBanner';
-import { ArtifactInterpretation } from '../types';
+import { ArtifactInterpretation, SharedPaperResponse } from '../types';
 
 export const SharedPaperPage: React.FC = () => {
   const { shareToken } = useParams<{ shareToken: string }>();
-  const [data, setData] = useState<any>(null);
+  const [data, setData] = useState<SharedPaperResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<AppErrorInfo | null>(null);
 
@@ -20,7 +20,7 @@ export const SharedPaperPage: React.FC = () => {
         const payload = await shareAPI.getSharedPaper(shareToken || '');
         if (!active) return;
         setData(payload);
-      } catch (err: any) {
+      } catch (err: unknown) {
         if (!active) return;
         setError(getApiErrorInfo(err, 'Failed to load the shared paper.'));
       } finally {

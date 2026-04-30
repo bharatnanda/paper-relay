@@ -6,6 +6,7 @@ from app.models.user import User
 from app.models.paper import Paper
 from app.models.analysis import PaperAnalysis
 from app.api.dependencies import get_current_user
+from app.schemas.paper import AnalysisSummary
 from app.services.export_service import ExportService
 
 router = APIRouter()
@@ -35,6 +36,8 @@ async def export_paper(
         raise HTTPException(status_code=400, detail="Analysis not ready")
 
     export_service = ExportService()
+    summary = AnalysisSummary.from_storage(analysis.summary_json)
+    knowledge_graph = analysis.knowledge_graph_json or {}
 
     if format.lower() == "pdf":
         pdf_bytes = export_service.generate_pdf(
@@ -45,10 +48,8 @@ async def export_paper(
                 "source_url": f"https://arxiv.org/abs/{paper.arxiv_id}" if paper.arxiv_id else None,
                 "pdf_url": paper.pdf_url
             },
-            {
-                "summary": analysis.summary_json,
-                "knowledge_graph": analysis.knowledge_graph_json
-            }
+            summary,
+            knowledge_graph,
         )
         return Response(
             content=pdf_bytes,
@@ -64,10 +65,8 @@ async def export_paper(
                 "source_url": f"https://arxiv.org/abs/{paper.arxiv_id}" if paper.arxiv_id else None,
                 "pdf_url": paper.pdf_url
             },
-            {
-                "summary": analysis.summary_json,
-                "knowledge_graph": analysis.knowledge_graph_json
-            }
+            summary,
+            knowledge_graph,
         )
         return Response(
             content=md_content,

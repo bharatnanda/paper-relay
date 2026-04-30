@@ -9,6 +9,7 @@ PaperRelay is no longer just a short summary flow. The current product is built 
 - passwordless sign-in with magic links
 - background paper analysis with progress tracking
 - a multi-pass distillation pipeline instead of a single short summary prompt
+- a canonical typed backend summary contract shared across persistence, API responses, export, chat, reformat, and public share flows
 - section-aware walkthroughs that cover motivation, method, results, and limitations
 - interpreted evidence from extracted figures and tables
 - formula explanations with nearby context when equation extraction succeeds
@@ -45,6 +46,99 @@ High-level flow:
 
 This keeps token usage under control while preserving more of the paper than a single short-context pass.
 
+## Architecture Status
+
+The current implementation is intentionally split into clear layers instead of letting routes or workers own the whole application flow.
+
+Backend layers:
+
+- schema layer: owns the canonical `AnalysisSummary` contract, nested summary models, and shared response schemas
+- route layer: owns HTTP input/output concerns for papers, export, share, and auth
+- analysis service layer: owns paper-analysis lifecycle orchestration such as lookup, queue submission, and completed-analysis access rules
+- pipeline layer: owns AI-stage orchestration across paper mapping, section distillation, results interpretation, math explanation, critique, and revision
+- worker layer: owns Celery job execution, progress persistence, knowledge-graph build, and final save/failure behavior
+
+Summary-contract status:
+
+- persisted summaries, API responses, export rendering, chat context, reformat behavior, and public share responses now all use the same canonical summary model
+- legacy stored rows are still accepted through normalization at the storage boundary
+- synthesis-time fields now use canonical names earlier in the pipeline
+- the processor-to-pipeline-to-worker handoff now uses a typed summary object instead of loose dicts
+
+Frontend structure:
+
+- `PaperPage` is now primarily a composition layer
+- data loading and polling live in `usePaperAnalysis`
+- completion notifications live in `useAnalysisCompletionNotice`
+- reading-level mutation flow lives in `usePaperReadingLevel`
+- right-panel viewer/chat state lives in `usePaperRightPanel`
+
+This is a materially simpler architecture than the original implementation, where contract mapping, workflow rules, and long-running orchestration were spread across routes, workers, export code, and frontend page components.
+
+Compact diagram:
+
+```text
+React app
+  -> FastAPI routes
+     -> paper analysis service
+        -> Postgres lookup/create
+        -> Celery job submission
+     -> canonical AnalysisSummary responses
+        -> paper page
+        -> chat
+        -> reformat
+        -> export
+        -> public share
+
+Celery worker
+  -> download PDF
+  -> parse PDF
+  -> analysis pipeline
+     -> map paper
+     -> distill sections
+     -> interpret figures/tables
+     -> explain math
+     -> synthesize typed AnalysisSummary
+     -> critique/revise
+  -> build knowledge graph
+  -> persist summary + graph to Postgres
+```
+
+Mermaid diagram:
+
+```mermaid
+flowchart TD
+    UI[React app] --> Routes[FastAPI routes]
+
+    Routes --> PaperService[Paper analysis service]
+    PaperService --> DB[(Postgres)]
+    PaperService --> Queue[Celery job submission]
+
+    Routes --> Summary[Canonical AnalysisSummary]
+    Summary --> PaperPage[Paper page]
+    Summary --> Chat[Chat]
+    Summary --> Reformat[Reformat]
+    Summary --> Export[Export]
+    Summary --> Share[Public share]
+
+    Queue --> Worker[Celery worker]
+    Worker --> Download[Download PDF]
+    Download --> Parse[Parse PDF]
+    Parse --> Pipeline[Analysis pipeline]
+
+    Pipeline --> Map[Map paper]
+    Map --> Distill[Distill sections]
+    Distill --> Interpret[Interpret figures and tables]
+    Interpret --> Math[Explain math]
+    Math --> Synthesize[Synthesize typed AnalysisSummary]
+    Synthesize --> Critique[Critique and revise]
+    Critique --> Graph[Build knowledge graph]
+    Graph --> Persist[Persist summary and graph]
+    Persist --> DB
+```
+
+See [architecture.md](architecture.md) for the running architecture review and step-by-step refactor history.
+
 ## Frontend Experience
 
 The frontend is centered on a single authenticated shell:
@@ -55,17 +149,21 @@ The frontend is centered on a single authenticated shell:
 
 The paper page now includes:
 
-- `Summary`, `Walkthrough`, `Math`, and `Knowledge Graph` tabs
+- `Anatomy`, `Math`, and `Knowledge Graph` tabs
+- reading-level switching between `general`, `technical`, and `eli5`
 - evaluation setup and strongest evidence callouts
 - interpreted evidence cards with confidence labels
 - extracted figure/table context
 - a toggleable original-paper PDF viewer
+- a built-in chat panel for follow-up questions on completed analyses
 - in-app and browser completion notifications for background jobs
 
-New capabilities available via API (frontend integration pending):
+The paper workspace has also been decomposed into focused hooks so page-level state is split across:
 
-- **Audience reformat**: switch the prose reading level between `general`, `technical`, and `eli5` without re-analyzing the paper
-- **Chat with paper**: ask follow-up questions about any completed analysis using the full conversation history
+- analysis loading and polling
+- completion-notification handling
+- reading-level mutation flow
+- right-panel state for chat and source-paper viewing
 
 The login and auth flow also auto-validates the persisted session on refresh, so stale client state is cleared when the backend session is no longer valid.
 
@@ -85,6 +183,18 @@ Exports now include:
 - interpreted evidence from figures and tables
 - formula explanations
 - knowledge graph summaries
+
+Export rendering now uses the same typed canonical summary model as the rest of the backend, which keeps export behavior aligned with authenticated paper views, chat, reformat, and public share responses.
+
+## Share Links
+
+Completed analyses can be shared publicly with a generated link.
+
+Shared links now return the same canonical summary shape used by the authenticated paper API, so shared-paper views and logged-in paper views stay aligned on:
+
+- anatomy fields such as `prior_work_and_gap`, `core_intuition`, `authors_claims`, and `evidence_assessment`
+- interpreted evidence
+- typed knowledge-graph payloads
 
 ## Current Limits
 
@@ -247,13 +357,13 @@ docker compose run --rm backend uv run pytest
 ### Targeted Backend API Tests
 
 ```bash
-docker compose run --rm backend uv run pytest tests/api/test_auth.py tests/api/test_papers.py tests/api/test_share.py -q
+docker compose run --rm backend uv run pytest tests/api/test_auth.py tests/api/test_papers.py tests/api/test_export.py tests/api/test_share.py -q
 ```
 
 ### Targeted Backend Service Tests
 
 ```bash
-docker compose run --rm backend uv run pytest tests/services/test_ai_processor.py tests/services/test_export_service.py tests/services/test_knowledge_graph.py -q
+docker compose run --rm backend uv run pytest tests/services/test_ai_processor.py tests/services/test_export_service.py tests/services/test_knowledge_graph.py tests/workers/test_tasks.py -q
 ```
 
 ### Frontend Tests
@@ -311,4 +421,5 @@ docker compose --profile tools run --rm frontend_tools sh
 ## Documentation
 
 - [API documentation](docs/API.md)
+- [Architecture review and refactor log](architecture.md)
 - [Project TODO / epic tracking](TODO.md)

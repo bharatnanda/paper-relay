@@ -8,6 +8,7 @@ from app.models.paper import Paper
 from app.models.analysis import PaperAnalysis
 from app.models.share import ShareLink
 from app.api.dependencies import get_current_user
+from app.schemas.paper import AnalysisSummary, SharedPaperResponse
 
 router = APIRouter()
 
@@ -32,7 +33,7 @@ async def create_share_link(paper_id: str, db: Session = Depends(get_db), curren
 
     return {"share_url": f"/share/{share_token}"}
 
-@router.get("/share/{share_token}")
+@router.get("/share/{share_token}", response_model=SharedPaperResponse)
 async def get_shared_paper(share_token: str, db: Session = Depends(get_db)):
     share_link = db.query(ShareLink).filter(ShareLink.share_token == share_token, ShareLink.is_active == True).first()
     if not share_link:
@@ -50,7 +51,20 @@ async def get_shared_paper(share_token: str, db: Session = Depends(get_db)):
     if not paper or not analysis:
         raise HTTPException(status_code=404, detail="Paper not found")
 
-    return {"paper": {"id": str(paper.id), "arxiv_id": paper.arxiv_id, "title": paper.title, "authors": paper.authors, "pdf_url": paper.pdf_url}, "analysis": {"status": analysis.processing_status, "summary": analysis.summary_json, "knowledge_graph": analysis.knowledge_graph_json}}
+    return {
+        "paper": {
+            "id": str(paper.id),
+            "arxiv_id": paper.arxiv_id,
+            "title": paper.title,
+            "authors": paper.authors,
+            "pdf_url": paper.pdf_url,
+        },
+        "analysis": {
+            "status": analysis.processing_status,
+            "summary": AnalysisSummary.from_storage(analysis.summary_json),
+            "knowledge_graph": analysis.knowledge_graph_json,
+        },
+    }
 
 @router.delete("/papers/{paper_id}/share")
 async def revoke_share_link(paper_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):

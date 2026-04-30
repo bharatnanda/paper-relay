@@ -7,11 +7,27 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
 
+from app.schemas.paper import (
+    AnalysisSummary,
+    ArtifactInterpretation,
+    DistilledSection,
+    DistilledTerm,
+    ExtractedTable,
+    FigureCaption,
+    FormulaExplanation,
+    ResultsView,
+)
+
 
 class ExportService:
     """Service for exporting paper analyses."""
 
-    def generate_pdf(self, paper: Dict[str, Any], analysis: Dict[str, Any]) -> bytes:
+    def generate_pdf(
+        self,
+        paper: Dict[str, Any],
+        summary: Optional[AnalysisSummary],
+        knowledge_graph: Optional[Dict[str, Any]],
+    ) -> bytes:
         """Generate PDF export of paper analysis."""
         buffer = BytesIO()
         doc = SimpleDocTemplate(
@@ -28,30 +44,31 @@ class ExportService:
 
         self._append_pdf_title_block(story, styles, paper)
 
-        summary = analysis.get("summary") or {}
-        knowledge_graph = analysis.get("knowledge_graph") or {}
-        results_view = summary.get("results_view") or {}
-        artifact_interpretations = summary.get("artifact_interpretations") or results_view.get("artifact_interpretations")
+        knowledge_graph = knowledge_graph or {}
+        results_view = summary.results_view if summary else None
+        artifact_interpretations = (
+            summary.artifact_interpretations or (results_view.artifact_interpretations if results_view else [])
+        ) if summary else []
 
         if summary:
-            self._append_pdf_section(story, styles, "Quick Summary", summary.get("quick"))
-            self._append_pdf_section(story, styles, "Problem and Motivation", summary.get("problem_and_motivation"))
-            self._append_pdf_section(story, styles, "How the Paper Works", summary.get("method_deep_dive") or summary.get("technical"))
-            self._append_pdf_section(story, styles, "Results and Evidence", summary.get("results_and_evidence"))
+            self._append_pdf_section(story, styles, "Quick Summary", summary.quick)
+            self._append_pdf_section(story, styles, "Problem and Motivation", summary.problem_and_motivation)
+            self._append_pdf_section(story, styles, "How the Paper Works", summary.method_deep_dive or summary.technical)
+            self._append_pdf_section(story, styles, "Results and Evidence", summary.results_and_evidence)
             self._append_pdf_results_view(story, styles, "Evaluation Snapshot", results_view)
             self._append_pdf_artifact_interpretations(story, styles, "Interpreted Evidence From Figures and Tables", artifact_interpretations)
-            self._append_pdf_section(story, styles, "Guided Walkthrough", summary.get("guided_walkthrough"))
-            self._append_pdf_section(story, styles, "Explain It Simply", summary.get("eli5"))
-            self._append_pdf_section(story, styles, "Limitations and Caveats", summary.get("limitations_and_caveats"))
+            self._append_pdf_section(story, styles, "Guided Walkthrough", summary.guided_walkthrough)
+            self._append_pdf_section(story, styles, "Explain It Simply", summary.eli5)
+            self._append_pdf_section(story, styles, "Limitations and Caveats", summary.limitations_and_caveats)
 
-            self._append_pdf_list_section(story, styles, "Key Contributions", summary.get("key_contributions"))
-            self._append_pdf_list_section(story, styles, "Key Findings", summary.get("key_findings"))
-            self._append_pdf_list_section(story, styles, "What to Remember", summary.get("reader_takeaways"))
-            self._append_pdf_section_cards(story, styles, "Section-by-Section Walkthrough", summary.get("section_breakdown"))
-            self._append_pdf_term_cards(story, styles, "Key Terms to Know", summary.get("terms"))
-            self._append_pdf_formula_section(story, styles, "Formula Explanations", summary.get("formula_explanations"))
-            self._append_pdf_figure_section(story, styles, "Figures Mentioned in the Paper", summary.get("figure_captions"))
-            self._append_pdf_table_section(story, styles, "Extracted Table Snapshots", summary.get("tables"))
+            self._append_pdf_list_section(story, styles, "Key Contributions", summary.key_contributions)
+            self._append_pdf_list_section(story, styles, "Key Findings", summary.key_findings)
+            self._append_pdf_list_section(story, styles, "What to Remember", summary.reader_takeaways)
+            self._append_pdf_section_cards(story, styles, "Section-by-Section Walkthrough", summary.section_breakdown)
+            self._append_pdf_term_cards(story, styles, "Key Terms to Know", summary.terms)
+            self._append_pdf_formula_section(story, styles, "Formula Explanations", summary.formula_explanations)
+            self._append_pdf_figure_section(story, styles, "Figures Mentioned in the Paper", summary.figure_captions)
+            self._append_pdf_table_section(story, styles, "Extracted Table Snapshots", summary.tables)
 
         self._append_pdf_graph_section(story, styles, "Knowledge Graph", knowledge_graph)
 
@@ -59,7 +76,12 @@ class ExportService:
         buffer.seek(0)
         return buffer.getvalue()
 
-    def generate_markdown(self, paper: Dict[str, Any], analysis: Dict[str, Any]) -> str:
+    def generate_markdown(
+        self,
+        paper: Dict[str, Any],
+        summary: Optional[AnalysisSummary],
+        knowledge_graph: Optional[Dict[str, Any]],
+    ) -> str:
         """Generate Markdown export of paper analysis."""
         source_url = self._paper_source_url(paper)
         pdf_url = paper.get("pdf_url")
@@ -81,30 +103,31 @@ class ExportService:
             "",
         ])
 
-        summary = analysis.get("summary") or {}
-        knowledge_graph = analysis.get("knowledge_graph") or {}
-        results_view = summary.get("results_view") or {}
-        artifact_interpretations = summary.get("artifact_interpretations") or results_view.get("artifact_interpretations")
+        knowledge_graph = knowledge_graph or {}
+        results_view = summary.results_view if summary else None
+        artifact_interpretations = (
+            summary.artifact_interpretations or (results_view.artifact_interpretations if results_view else [])
+        ) if summary else []
 
         if summary:
-            self._append_markdown_section(lines, "Quick Summary", summary.get("quick"))
-            self._append_markdown_section(lines, "Problem and Motivation", summary.get("problem_and_motivation"))
-            self._append_markdown_section(lines, "How the Paper Works", summary.get("method_deep_dive") or summary.get("technical"))
-            self._append_markdown_section(lines, "Results and Evidence", summary.get("results_and_evidence"))
+            self._append_markdown_section(lines, "Quick Summary", summary.quick)
+            self._append_markdown_section(lines, "Problem and Motivation", summary.problem_and_motivation)
+            self._append_markdown_section(lines, "How the Paper Works", summary.method_deep_dive or summary.technical)
+            self._append_markdown_section(lines, "Results and Evidence", summary.results_and_evidence)
             self._append_markdown_results_view(lines, "Evaluation Snapshot", results_view)
             self._append_markdown_artifact_interpretations(lines, "Interpreted Evidence From Figures and Tables", artifact_interpretations)
-            self._append_markdown_section(lines, "Guided Walkthrough", summary.get("guided_walkthrough"))
-            self._append_markdown_section(lines, "ELI5", summary.get("eli5"))
-            self._append_markdown_section(lines, "Limitations and Caveats", summary.get("limitations_and_caveats"))
+            self._append_markdown_section(lines, "Guided Walkthrough", summary.guided_walkthrough)
+            self._append_markdown_section(lines, "ELI5", summary.eli5)
+            self._append_markdown_section(lines, "Limitations and Caveats", summary.limitations_and_caveats)
 
-            self._append_markdown_list_section(lines, "Key Contributions", summary.get("key_contributions"))
-            self._append_markdown_list_section(lines, "Key Findings", summary.get("key_findings"))
-            self._append_markdown_list_section(lines, "What to Remember", summary.get("reader_takeaways"))
-            self._append_markdown_section_breakdown(lines, "Section-by-Section Walkthrough", summary.get("section_breakdown"))
-            self._append_markdown_terms(lines, "Key Terms to Know", summary.get("terms"))
-            self._append_markdown_formulas(lines, "Formula Explanations", summary.get("formula_explanations"))
-            self._append_markdown_figures(lines, "Figures Mentioned in the Paper", summary.get("figure_captions"))
-            self._append_markdown_tables(lines, "Extracted Table Snapshots", summary.get("tables"))
+            self._append_markdown_list_section(lines, "Key Contributions", summary.key_contributions)
+            self._append_markdown_list_section(lines, "Key Findings", summary.key_findings)
+            self._append_markdown_list_section(lines, "What to Remember", summary.reader_takeaways)
+            self._append_markdown_section_breakdown(lines, "Section-by-Section Walkthrough", summary.section_breakdown)
+            self._append_markdown_terms(lines, "Key Terms to Know", summary.terms)
+            self._append_markdown_formulas(lines, "Formula Explanations", summary.formula_explanations)
+            self._append_markdown_figures(lines, "Figures Mentioned in the Paper", summary.figure_captions)
+            self._append_markdown_tables(lines, "Extracted Table Snapshots", summary.tables)
 
         self._append_markdown_graph(lines, "Knowledge Graph", knowledge_graph)
 
@@ -210,58 +233,76 @@ class ExportService:
             story.append(Paragraph(f"• {escape(item)}", styles["ExportBodyText"]))
         story.append(Spacer(1, 0.12 * inch))
 
-    def _append_pdf_section_cards(self, story: List[Any], styles: Any, heading: str, sections: Optional[List[Dict[str, Any]]]) -> None:
-        normalized = [section for section in (sections or []) if section.get("title") or section.get("summary")]
+    def _append_pdf_section_cards(
+        self,
+        story: List[Any],
+        styles: Any,
+        heading: str,
+        sections: Optional[List[DistilledSection]],
+    ) -> None:
+        normalized = [section for section in (sections or []) if section.title or section.summary]
         if not normalized:
             return
         story.append(Paragraph(f"<b>{escape(heading)}</b>", styles["SubHeading"]))
         for section in normalized:
-            title = section.get("title", "Untitled section")
+            title = section.title or "Untitled section"
             story.append(Paragraph(f"<b>{escape(title)}</b>", styles["ExportBodyText"]))
-            if section.get("summary"):
-                for paragraph in self._paragraphs(section["summary"]):
+            if section.summary:
+                for paragraph in self._paragraphs(section.summary):
                     story.append(Paragraph(escape(paragraph), styles["ExportBodyText"]))
-            if section.get("why_it_matters"):
+            if section.why_it_matters:
                 story.append(
                     Paragraph(
-                        f"<b>Why it matters:</b> {escape(section['why_it_matters'])}",
+                        f"<b>Why it matters:</b> {escape(section.why_it_matters)}",
                         styles["ExportBodyText"],
                     )
                 )
             story.append(Spacer(1, 0.1 * inch))
         story.append(Spacer(1, 0.08 * inch))
 
-    def _append_pdf_term_cards(self, story: List[Any], styles: Any, heading: str, terms: Optional[List[Dict[str, Any]]]) -> None:
-        normalized = [term for term in (terms or []) if term.get("term")]
+    def _append_pdf_term_cards(
+        self,
+        story: List[Any],
+        styles: Any,
+        heading: str,
+        terms: Optional[List[DistilledTerm]],
+    ) -> None:
+        normalized = [term for term in (terms or []) if term.term]
         if not normalized:
             return
         story.append(Paragraph(f"<b>{escape(heading)}</b>", styles["SubHeading"]))
         for term in normalized:
-            label = term.get("term", "")
-            category = term.get("category")
+            label = term.term
+            category = term.category
             title = label if not category else f"{label} ({category})"
             story.append(Paragraph(f"<b>{escape(title)}</b>", styles["ExportBodyText"]))
-            if term.get("definition"):
-                story.append(Paragraph(escape(term["definition"]), styles["ExportBodyText"]))
+            if term.definition:
+                story.append(Paragraph(escape(term.definition), styles["ExportBodyText"]))
             story.append(Spacer(1, 0.08 * inch))
         story.append(Spacer(1, 0.08 * inch))
 
-    def _append_pdf_formula_section(self, story: List[Any], styles: Any, heading: str, formulas: Optional[List[Dict[str, Any]]]) -> None:
-        normalized = [formula for formula in (formulas or []) if formula.get("latex") or formula.get("plain_explanation")]
+    def _append_pdf_formula_section(
+        self,
+        story: List[Any],
+        styles: Any,
+        heading: str,
+        formulas: Optional[List[FormulaExplanation]],
+    ) -> None:
+        normalized = [formula for formula in (formulas or []) if formula.latex or formula.plain_explanation]
         if not normalized:
             return
         story.append(Paragraph(f"<b>{escape(heading)}</b>", styles["SubHeading"]))
         for formula in normalized:
-            if formula.get("latex"):
+            if formula.latex:
                 story.append(
                     Paragraph(
-                        f"<b>Expression:</b> {escape(formula['latex'])}",
+                        f"<b>Expression:</b> {escape(formula.latex)}",
                         styles["ExportBodyText"],
                     )
                 )
-            if formula.get("plain_explanation"):
-                story.append(Paragraph(escape(formula["plain_explanation"]), styles["ExportBodyText"]))
-            symbols = formula.get("symbols") or {}
+            if formula.plain_explanation:
+                story.append(Paragraph(escape(formula.plain_explanation), styles["ExportBodyText"]))
+            symbols = formula.symbols or {}
             for symbol, meaning in symbols.items():
                 story.append(
                     Paragraph(
@@ -269,64 +310,80 @@ class ExportService:
                         styles["ExportMetaText"],
                     )
                 )
-            if formula.get("importance"):
+            if formula.importance:
                 story.append(
                     Paragraph(
-                        f"<b>Why it matters:</b> {escape(formula['importance'])}",
+                        f"<b>Why it matters:</b> {escape(formula.importance)}",
                         styles["ExportBodyText"],
                     )
                 )
             story.append(Spacer(1, 0.1 * inch))
         story.append(Spacer(1, 0.08 * inch))
 
-    def _append_pdf_results_view(self, story: List[Any], styles: Any, heading: str, results_view: Optional[Dict[str, Any]]) -> None:
-        normalized = results_view or {}
-        if not normalized:
+    def _append_pdf_results_view(
+        self,
+        story: List[Any],
+        styles: Any,
+        heading: str,
+        results_view: Optional[ResultsView],
+    ) -> None:
+        if not results_view:
             return
         has_content = any(
-            normalized.get(key)
-            for key in ("evaluation_setup", "results_summary", "strongest_evidence", "caveats")
+            value
+            for value in (
+                results_view.evaluation_setup,
+                results_view.results_summary,
+                results_view.strongest_evidence,
+                results_view.caveats,
+            )
         )
         if not has_content:
             return
 
         story.append(Paragraph(f"<b>{escape(heading)}</b>", styles["SubHeading"]))
-        if normalized.get("evaluation_setup"):
+        if results_view.evaluation_setup:
             story.append(
                 Paragraph(
-                    f"<b>Evaluation setup:</b> {escape(str(normalized['evaluation_setup']))}",
+                    f"<b>Evaluation setup:</b> {escape(str(results_view.evaluation_setup))}",
                     styles["ExportBodyText"],
                 )
             )
-        if normalized.get("results_summary"):
+        if results_view.results_summary:
             story.append(
                 Paragraph(
-                    f"<b>What the evidence says:</b> {escape(str(normalized['results_summary']))}",
+                    f"<b>What the evidence says:</b> {escape(str(results_view.results_summary))}",
                     styles["ExportBodyText"],
                 )
             )
-        strongest_evidence = [item for item in (normalized.get("strongest_evidence") or []) if item]
+        strongest_evidence = [item for item in results_view.strongest_evidence if item]
         if strongest_evidence:
             story.append(Paragraph("<b>Strongest evidence</b>", styles["ExportBodyText"]))
             for item in strongest_evidence:
                 story.append(Paragraph(f"• {escape(str(item))}", styles["ExportMetaText"]))
-        caveats = [item for item in (normalized.get("caveats") or []) if item]
+        caveats = [item for item in results_view.caveats if item]
         if caveats:
             story.append(Paragraph("<b>Evidence caveats</b>", styles["ExportBodyText"]))
             for item in caveats:
                 story.append(Paragraph(f"• {escape(str(item))}", styles["ExportMetaText"]))
         story.append(Spacer(1, 0.12 * inch))
 
-    def _append_pdf_artifact_interpretations(self, story: List[Any], styles: Any, heading: str, items: Optional[List[Dict[str, Any]]]) -> None:
-        normalized = [item for item in (items or []) if item.get("what_it_shows") or item.get("why_it_matters")]
+    def _append_pdf_artifact_interpretations(
+        self,
+        story: List[Any],
+        styles: Any,
+        heading: str,
+        items: Optional[List[ArtifactInterpretation]],
+    ) -> None:
+        normalized = [item for item in (items or []) if item.what_it_shows or item.why_it_matters]
         if not normalized:
             return
         story.append(Paragraph(f"<b>{escape(heading)}</b>", styles["SubHeading"]))
         for item in normalized:
-            label = item.get("label") or item.get("artifact_type") or "Artifact"
-            artifact_type = item.get("artifact_type")
-            section_title = item.get("section_title")
-            confidence = item.get("confidence")
+            label = item.label or item.artifact_type or "Artifact"
+            artifact_type = item.artifact_type
+            section_title = item.section_title
+            confidence = item.confidence
             title_parts = [str(label)]
             if artifact_type:
                 title_parts.append(f"({artifact_type})")
@@ -338,58 +395,71 @@ class ExportService:
                 meta_parts.append(f"Confidence: {confidence}")
             if meta_parts:
                 story.append(Paragraph(escape(" | ".join(meta_parts)), styles["ExportMetaText"]))
-            if item.get("what_it_shows"):
+            if item.what_it_shows:
                 story.append(
                     Paragraph(
-                        f"<b>What it shows:</b> {escape(str(item['what_it_shows']))}",
+                        f"<b>What it shows:</b> {escape(str(item.what_it_shows))}",
                         styles["ExportBodyText"],
                     )
                 )
-            if item.get("why_it_matters"):
+            if item.why_it_matters:
                 story.append(
                     Paragraph(
-                        f"<b>Why it matters:</b> {escape(str(item['why_it_matters']))}",
+                        f"<b>Why it matters:</b> {escape(str(item.why_it_matters))}",
                         styles["ExportBodyText"],
                     )
                 )
-            if item.get("missing_context"):
+            missing_context = getattr(item, "missing_context", None)
+            if missing_context:
                 story.append(
                     Paragraph(
-                        f"<b>Missing context:</b> {escape(str(item['missing_context']))}",
+                        f"<b>Missing context:</b> {escape(str(missing_context))}",
                         styles["ExportMetaText"],
                     )
                 )
             story.append(Spacer(1, 0.1 * inch))
         story.append(Spacer(1, 0.08 * inch))
 
-    def _append_pdf_figure_section(self, story: List[Any], styles: Any, heading: str, figures: Optional[List[Dict[str, Any]]]) -> None:
-        normalized = [figure for figure in (figures or []) if figure.get("caption")]
+    def _append_pdf_figure_section(
+        self,
+        story: List[Any],
+        styles: Any,
+        heading: str,
+        figures: Optional[List[FigureCaption]],
+    ) -> None:
+        normalized = [figure for figure in (figures or []) if figure.caption]
         if not normalized:
             return
         story.append(Paragraph(f"<b>{escape(heading)}</b>", styles["SubHeading"]))
         for figure in normalized:
-            label = figure.get("label") or "Figure"
-            page = figure.get("page")
+            label = figure.label or "Figure"
+            page = figure.page
             page_suffix = f" (page {page + 1})" if isinstance(page, int) else ""
             story.append(
                 Paragraph(
-                    f"<b>{escape(str(label))}{escape(page_suffix)}:</b> {escape(figure['caption'])}",
+                    f"<b>{escape(str(label))}{escape(page_suffix)}:</b> {escape(figure.caption)}",
                     styles["ExportBodyText"],
                 )
             )
         story.append(Spacer(1, 0.12 * inch))
 
-    def _append_pdf_table_section(self, story: List[Any], styles: Any, heading: str, tables: Optional[List[Dict[str, Any]]]) -> None:
-        normalized = [table for table in (tables or []) if table.get("rows")]
+    def _append_pdf_table_section(
+        self,
+        story: List[Any],
+        styles: Any,
+        heading: str,
+        tables: Optional[List[ExtractedTable]],
+    ) -> None:
+        normalized = [table for table in (tables or []) if table.rows]
         if not normalized:
             return
         story.append(Paragraph(f"<b>{escape(heading)}</b>", styles["SubHeading"]))
         for table in normalized:
-            title = table.get("title") or "Table"
-            page = table.get("page")
+            title = table.title or "Table"
+            page = table.page
             page_suffix = f" (page {page + 1})" if isinstance(page, int) else ""
             story.append(Paragraph(f"<b>{escape(title)}{escape(page_suffix)}</b>", styles["ExportBodyText"]))
-            preview_rows = table.get("rows", [])[:6]
+            preview_rows = table.rows[:6]
             for row in preview_rows:
                 row_text = " | ".join((cell or "—").strip() for cell in row)
                 story.append(Paragraph(escape(row_text), styles["ExportMetaText"]))
@@ -441,135 +511,175 @@ class ExportService:
         lines.extend([f"- {item}" for item in normalized])
         lines.append("")
 
-    def _append_markdown_section_breakdown(self, lines: List[str], heading: str, sections: Optional[List[Dict[str, Any]]]) -> None:
-        normalized = [section for section in (sections or []) if section.get("title") or section.get("summary")]
+    def _append_markdown_section_breakdown(
+        self,
+        lines: List[str],
+        heading: str,
+        sections: Optional[List[DistilledSection]],
+    ) -> None:
+        normalized = [section for section in (sections or []) if section.title or section.summary]
         if not normalized:
             return
         lines.extend([f"## {heading}", ""])
         for section in normalized:
-            lines.append(f"### {section.get('title', 'Untitled section')}")
+            lines.append(f"### {section.title or 'Untitled section'}")
             lines.append("")
-            if section.get("summary"):
-                lines.append(section["summary"].strip())
+            if section.summary:
+                lines.append(section.summary.strip())
                 lines.append("")
-            if section.get("why_it_matters"):
-                lines.append(f"**Why it matters:** {section['why_it_matters'].strip()}")
+            if section.why_it_matters:
+                lines.append(f"**Why it matters:** {section.why_it_matters.strip()}")
                 lines.append("")
 
-    def _append_markdown_terms(self, lines: List[str], heading: str, terms: Optional[List[Dict[str, Any]]]) -> None:
-        normalized = [term for term in (terms or []) if term.get("term")]
+    def _append_markdown_terms(
+        self,
+        lines: List[str],
+        heading: str,
+        terms: Optional[List[DistilledTerm]],
+    ) -> None:
+        normalized = [term for term in (terms or []) if term.term]
         if not normalized:
             return
         lines.extend([f"## {heading}", ""])
         for term in normalized:
-            category = f" ({term['category']})" if term.get("category") else ""
-            lines.append(f"- **{term['term']}**{category}: {term.get('definition', '').strip()}")
+            category = f" ({term.category})" if term.category else ""
+            lines.append(f"- **{term.term}**{category}: {term.definition.strip()}")
         lines.append("")
 
-    def _append_markdown_formulas(self, lines: List[str], heading: str, formulas: Optional[List[Dict[str, Any]]]) -> None:
-        normalized = [formula for formula in (formulas or []) if formula.get("latex") or formula.get("plain_explanation")]
+    def _append_markdown_formulas(
+        self,
+        lines: List[str],
+        heading: str,
+        formulas: Optional[List[FormulaExplanation]],
+    ) -> None:
+        normalized = [formula for formula in (formulas or []) if formula.latex or formula.plain_explanation]
         if not normalized:
             return
         lines.extend([f"## {heading}", ""])
         for formula in normalized:
-            if formula.get("latex"):
-                lines.append(f"### `{formula['latex']}`")
+            if formula.latex:
+                lines.append(f"### `{formula.latex}`")
                 lines.append("")
-            if formula.get("plain_explanation"):
-                lines.append(formula["plain_explanation"].strip())
+            if formula.plain_explanation:
+                lines.append(formula.plain_explanation.strip())
                 lines.append("")
-            symbols = formula.get("symbols") or {}
+            symbols = formula.symbols or {}
             if symbols:
                 lines.append("**Symbols**")
                 lines.append("")
                 for symbol, meaning in symbols.items():
                     lines.append(f"- `{symbol}`: {meaning}")
                 lines.append("")
-            if formula.get("importance"):
-                lines.append(f"**Why it matters:** {formula['importance'].strip()}")
+            if formula.importance:
+                lines.append(f"**Why it matters:** {formula.importance.strip()}")
                 lines.append("")
 
-    def _append_markdown_results_view(self, lines: List[str], heading: str, results_view: Optional[Dict[str, Any]]) -> None:
-        normalized = results_view or {}
-        if not normalized:
+    def _append_markdown_results_view(
+        self,
+        lines: List[str],
+        heading: str,
+        results_view: Optional[ResultsView],
+    ) -> None:
+        if not results_view:
             return
         has_content = any(
-            normalized.get(key)
-            for key in ("evaluation_setup", "results_summary", "strongest_evidence", "caveats")
+            value
+            for value in (
+                results_view.evaluation_setup,
+                results_view.results_summary,
+                results_view.strongest_evidence,
+                results_view.caveats,
+            )
         )
         if not has_content:
             return
 
         lines.extend([f"## {heading}", ""])
-        if normalized.get("evaluation_setup"):
-            lines.append(f"**Evaluation setup:** {str(normalized['evaluation_setup']).strip()}")
+        if results_view.evaluation_setup:
+            lines.append(f"**Evaluation setup:** {str(results_view.evaluation_setup).strip()}")
             lines.append("")
-        if normalized.get("results_summary"):
-            lines.append(f"**What the evidence says:** {str(normalized['results_summary']).strip()}")
+        if results_view.results_summary:
+            lines.append(f"**What the evidence says:** {str(results_view.results_summary).strip()}")
             lines.append("")
-        strongest_evidence = [item for item in (normalized.get("strongest_evidence") or []) if item]
+        strongest_evidence = [item for item in results_view.strongest_evidence if item]
         if strongest_evidence:
             lines.append("### Strongest evidence")
             lines.append("")
             lines.extend([f"- {str(item).strip()}" for item in strongest_evidence])
             lines.append("")
-        caveats = [item for item in (normalized.get("caveats") or []) if item]
+        caveats = [item for item in results_view.caveats if item]
         if caveats:
             lines.append("### Evidence caveats")
             lines.append("")
             lines.extend([f"- {str(item).strip()}" for item in caveats])
             lines.append("")
 
-    def _append_markdown_artifact_interpretations(self, lines: List[str], heading: str, items: Optional[List[Dict[str, Any]]]) -> None:
-        normalized = [item for item in (items or []) if item.get("what_it_shows") or item.get("why_it_matters")]
+    def _append_markdown_artifact_interpretations(
+        self,
+        lines: List[str],
+        heading: str,
+        items: Optional[List[ArtifactInterpretation]],
+    ) -> None:
+        normalized = [item for item in (items or []) if item.what_it_shows or item.why_it_matters]
         if not normalized:
             return
         lines.extend([f"## {heading}", ""])
         for item in normalized:
-            label = item.get("label") or item.get("artifact_type") or "Artifact"
-            artifact_type = f" ({item['artifact_type']})" if item.get("artifact_type") else ""
+            label = item.label or item.artifact_type or "Artifact"
+            artifact_type = f" ({item.artifact_type})" if item.artifact_type else ""
             lines.append(f"### {label}{artifact_type}")
             lines.append("")
-            if item.get("section_title"):
-                lines.append(f"**Section:** {str(item['section_title']).strip()}")
+            if item.section_title:
+                lines.append(f"**Section:** {str(item.section_title).strip()}")
                 lines.append("")
-            if item.get("confidence"):
-                lines.append(f"**Confidence:** {str(item['confidence']).strip()}")
+            if item.confidence:
+                lines.append(f"**Confidence:** {str(item.confidence).strip()}")
                 lines.append("")
-            if item.get("what_it_shows"):
-                lines.append(f"**What it shows:** {str(item['what_it_shows']).strip()}")
+            if item.what_it_shows:
+                lines.append(f"**What it shows:** {str(item.what_it_shows).strip()}")
                 lines.append("")
-            if item.get("why_it_matters"):
-                lines.append(f"**Why it matters:** {str(item['why_it_matters']).strip()}")
+            if item.why_it_matters:
+                lines.append(f"**Why it matters:** {str(item.why_it_matters).strip()}")
                 lines.append("")
-            if item.get("missing_context"):
-                lines.append(f"**Missing context:** {str(item['missing_context']).strip()}")
+            missing_context = getattr(item, "missing_context", None)
+            if missing_context:
+                lines.append(f"**Missing context:** {str(missing_context).strip()}")
                 lines.append("")
 
-    def _append_markdown_figures(self, lines: List[str], heading: str, figures: Optional[List[Dict[str, Any]]]) -> None:
-        normalized = [figure for figure in (figures or []) if figure.get("caption")]
+    def _append_markdown_figures(
+        self,
+        lines: List[str],
+        heading: str,
+        figures: Optional[List[FigureCaption]],
+    ) -> None:
+        normalized = [figure for figure in (figures or []) if figure.caption]
         if not normalized:
             return
         lines.extend([f"## {heading}", ""])
         for figure in normalized:
-            label = figure.get("label") or "Figure"
-            page = figure.get("page")
+            label = figure.label or "Figure"
+            page = figure.page
             page_suffix = f" (page {page + 1})" if isinstance(page, int) else ""
-            lines.append(f"- **{label}{page_suffix}:** {figure['caption']}")
+            lines.append(f"- **{label}{page_suffix}:** {figure.caption}")
         lines.append("")
 
-    def _append_markdown_tables(self, lines: List[str], heading: str, tables: Optional[List[Dict[str, Any]]]) -> None:
-        normalized = [table for table in (tables or []) if table.get("rows")]
+    def _append_markdown_tables(
+        self,
+        lines: List[str],
+        heading: str,
+        tables: Optional[List[ExtractedTable]],
+    ) -> None:
+        normalized = [table for table in (tables or []) if table.rows]
         if not normalized:
             return
         lines.extend([f"## {heading}", ""])
         for table in normalized:
-            title = table.get("title") or "Table"
-            page = table.get("page")
+            title = table.title or "Table"
+            page = table.page
             page_suffix = f" (page {page + 1})" if isinstance(page, int) else ""
             lines.append(f"### {title}{page_suffix}")
             lines.append("")
-            preview_rows = table.get("rows", [])[:6]
+            preview_rows = table.rows[:6]
             for row in preview_rows:
                 lines.append(f"- {' | '.join((cell or '—').strip() for cell in row)}")
             lines.append("")

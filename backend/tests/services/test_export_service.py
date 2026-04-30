@@ -1,4 +1,5 @@
 import pytest
+from app.schemas.paper import AnalysisSummary
 from app.services.export_service import ExportService
 
 
@@ -16,67 +17,66 @@ class TestExportService:
             "source_url": "https://arxiv.org/abs/2301.12345",
             "pdf_url": "https://arxiv.org/pdf/2301.12345.pdf",
         }
-        analysis = {
-            "summary": {
-                "quick": "Test summary",
-                "eli5": "Test ELI5",
-                "problem_and_motivation": "Why this paper exists",
-                "method_deep_dive": "How the method works",
-                "results_and_evidence": "The evidence is strong",
-                "guided_walkthrough": "A longer walkthrough",
-                "limitations_and_caveats": "A few caveats",
-                "key_contributions": ["Contribution 1"],
-                "key_findings": ["Finding 1"],
-                "reader_takeaways": ["Takeaway 1"],
-                "section_breakdown": [
-                    {"title": "Method", "summary": "Section summary", "why_it_matters": "Why it matters"}
-                ],
-                "terms": [
-                    {"term": "Agent", "category": "concept", "definition": "An acting system", "mentions": 2}
-                ],
-                "formula_explanations": [
+        summary = AnalysisSummary.model_validate({
+            "quick": "Test summary",
+            "eli5": "Test ELI5",
+            "technical": "Technical summary",
+            "problem_and_motivation": "Why this paper exists",
+            "method_deep_dive": "How the method works",
+            "results_and_evidence": "The evidence is strong",
+            "guided_walkthrough": "A longer walkthrough",
+            "limitations_and_caveats": "A few caveats",
+            "key_contributions": ["Contribution 1"],
+            "key_findings": ["Finding 1"],
+            "reader_takeaways": ["Takeaway 1"],
+            "section_breakdown": [
+                {"title": "Method", "summary": "Section summary", "why_it_matters": "Why it matters"}
+            ],
+            "terms": [
+                {"term": "Agent", "category": "concept", "definition": "An acting system", "mentions": 2}
+            ],
+            "formula_explanations": [
+                {
+                    "latex": "y = mx + b",
+                    "plain_explanation": "A simple line.",
+                    "symbols": {"m": "slope"},
+                    "importance": "Defines the relationship"
+                }
+            ],
+            "figure_captions": [
+                {"label": "Figure 1", "caption": "System overview", "page": 0}
+            ],
+            "tables": [
+                {"title": "Table 1", "page": 1, "rows": [["Model", "Score"], ["A", "90"]]}
+            ],
+            "results_view": {
+                "evaluation_setup": "Compared against strong baselines on benchmark tasks.",
+                "results_summary": "The method improves headline metrics.",
+                "strongest_evidence": ["Table 1 shows the best overall score."],
+                "caveats": ["The gain is smaller on the hardest subset."],
+                "artifact_interpretations": [
                     {
-                        "latex": "y = mx + b",
-                        "plain_explanation": "A simple line.",
-                        "symbols": {"m": "slope"},
-                        "importance": "Defines the relationship"
+                        "artifact_type": "table",
+                        "label": "Table 1",
+                        "section_title": "Results",
+                        "what_it_shows": "Main benchmark comparison.",
+                        "why_it_matters": "Demonstrates the claimed win.",
+                        "confidence": "high",
+                        "missing_context": "Per-dataset variance is not shown.",
                     }
                 ],
-                "figure_captions": [
-                    {"label": "Figure 1", "caption": "System overview", "page": 0}
-                ],
-                "tables": [
-                    {"title": "Table 1", "page": 1, "rows": [["Model", "Score"], ["A", "90"]]}
-                ],
-                "results_view": {
-                    "evaluation_setup": "Compared against strong baselines on benchmark tasks.",
-                    "results_summary": "The method improves headline metrics.",
-                    "strongest_evidence": ["Table 1 shows the best overall score."],
-                    "caveats": ["The gain is smaller on the hardest subset."],
-                    "artifact_interpretations": [
-                        {
-                            "artifact_type": "table",
-                            "label": "Table 1",
-                            "section_title": "Results",
-                            "what_it_shows": "Main benchmark comparison.",
-                            "why_it_matters": "Demonstrates the claimed win.",
-                            "confidence": "high",
-                            "missing_context": "Per-dataset variance is not shown.",
-                        }
-                    ],
-                },
             },
-            "knowledge_graph": {
-                "nodes": [
-                    {"id": "agent", "label": "Agent", "category": "concept", "definition": "Acts in the environment", "value": 1}
-                ],
-                "edges": [
-                    {"source": "agent", "target": "memory", "type": "uses", "weight": 1}
-                ]
-            },
+        })
+        knowledge_graph = {
+            "nodes": [
+                {"id": "agent", "label": "Agent", "category": "concept", "definition": "Acts in the environment", "value": 1}
+            ],
+            "edges": [
+                {"source": "agent", "target": "memory", "type": "uses", "weight": 1}
+            ]
         }
 
-        md = export_service.generate_markdown(paper, analysis)
+        md = export_service.generate_markdown(paper, summary, knowledge_graph)
 
         assert "# Test Paper" in md
         assert "> Generated by PaperRelay" in md
@@ -110,13 +110,13 @@ class TestExportService:
             "authors": ["Author 1"],
             "arxiv_id": "2301.12345"
         }
-        analysis = {
-            "summary": {
-                "quick": "Test summary"
-            }
-        }
+        summary = AnalysisSummary.model_validate({
+            "quick": "Test summary",
+            "eli5": "",
+            "technical": "",
+        })
 
-        md = export_service.generate_markdown(paper, analysis)
+        md = export_service.generate_markdown(paper, summary, None)
 
         assert "# Test Paper" in md
         assert "**Authors:** Author 1" in md
@@ -126,9 +126,7 @@ class TestExportService:
     def test_generate_markdown_empty_paper(self, export_service):
         """Test markdown generation with empty paper data."""
         paper = {}
-        analysis = {}
-
-        md = export_service.generate_markdown(paper, analysis)
+        md = export_service.generate_markdown(paper, None, None)
 
         assert "# Unknown" in md
         assert "**Authors:**" in md
@@ -143,45 +141,45 @@ class TestExportService:
             "source_url": "https://arxiv.org/abs/2301.12345",
             "pdf_url": "https://arxiv.org/pdf/2301.12345.pdf",
         }
-        analysis = {
-            "summary": {
-                "quick": "Test summary",
-                "guided_walkthrough": "Longer walkthrough",
-                "key_contributions": ["Contribution 1", "Contribution 2"],
-                "results_view": {
-                    "evaluation_setup": "Setup details",
-                    "strongest_evidence": ["Table 1 is the strongest evidence"],
-                    "artifact_interpretations": [
-                        {
-                            "artifact_type": "table",
-                            "label": "Table 1",
-                            "section_title": "Results",
-                            "what_it_shows": "Main comparison",
-                            "why_it_matters": "It supports the main claim",
-                            "confidence": "medium",
-                        }
-                    ],
-                },
-                "formula_explanations": [
+        summary = AnalysisSummary.model_validate({
+            "quick": "Test summary",
+            "eli5": "",
+            "technical": "",
+            "guided_walkthrough": "Longer walkthrough",
+            "key_contributions": ["Contribution 1", "Contribution 2"],
+            "results_view": {
+                "evaluation_setup": "Setup details",
+                "strongest_evidence": ["Table 1 is the strongest evidence"],
+                "artifact_interpretations": [
                     {
-                        "latex": "y = mx + b",
-                        "plain_explanation": "A simple line.",
-                        "symbols": {"m": "slope"},
-                        "importance": "Defines the relationship"
+                        "artifact_type": "table",
+                        "label": "Table 1",
+                        "section_title": "Results",
+                        "what_it_shows": "Main comparison",
+                        "why_it_matters": "It supports the main claim",
+                        "confidence": "medium",
                     }
                 ],
             },
-            "knowledge_graph": {
-                "nodes": [
-                    {"id": "agent", "label": "Agent", "category": "concept", "definition": "Acts in the environment", "value": 1}
-                ],
-                "edges": [
-                    {"source": "agent", "target": "memory", "type": "uses", "weight": 1}
-                ]
-            },
+            "formula_explanations": [
+                {
+                    "latex": "y = mx + b",
+                    "plain_explanation": "A simple line.",
+                    "symbols": {"m": "slope"},
+                    "importance": "Defines the relationship"
+                }
+            ],
+        })
+        knowledge_graph = {
+            "nodes": [
+                {"id": "agent", "label": "Agent", "category": "concept", "definition": "Acts in the environment", "value": 1}
+            ],
+            "edges": [
+                {"source": "agent", "target": "memory", "type": "uses", "weight": 1}
+            ]
         }
 
-        pdf_bytes = export_service.generate_pdf(paper, analysis)
+        pdf_bytes = export_service.generate_pdf(paper, summary, knowledge_graph)
 
         assert isinstance(pdf_bytes, bytes)
         assert len(pdf_bytes) > 0
@@ -191,9 +189,34 @@ class TestExportService:
     def test_generate_pdf_empty_data(self, export_service):
         """Test PDF generation with empty data."""
         paper = {}
-        analysis = {}
-
-        pdf_bytes = export_service.generate_pdf(paper, analysis)
+        pdf_bytes = export_service.generate_pdf(paper, None, None)
 
         assert isinstance(pdf_bytes, bytes)
         assert len(pdf_bytes) > 0
+
+    def test_generate_markdown_accepts_legacy_storage_summary_shape(self, export_service):
+        paper = {
+            "title": "Legacy Summary Paper",
+            "authors": ["Author 1"],
+            "arxiv_id": "2301.12345",
+        }
+        summary = AnalysisSummary.from_storage({
+            "quick_summary": "Legacy quick summary",
+            "eli5_explanation": "Legacy eli5 summary",
+            "technical_summary": "Legacy technical summary",
+            "results_view": {
+                "artifact_interpretations": [
+                    {
+                        "artifact_type": "figure",
+                        "label": "Figure 2",
+                        "what_it_shows": "Legacy artifact still survives normalization.",
+                    }
+                ]
+            },
+        })
+
+        md = export_service.generate_markdown(paper, summary, None)
+
+        assert "Legacy quick summary" in md
+        assert "Legacy eli5 summary" in md
+        assert "Legacy artifact still survives normalization." in md

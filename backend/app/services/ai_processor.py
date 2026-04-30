@@ -6,6 +6,7 @@ import json
 import logging
 
 from app.core.config import settings
+from app.schemas.paper import AnalysisSummary
 
 logger = logging.getLogger(__name__)
 
@@ -112,6 +113,20 @@ class AIProcessor:
             if any(keyword in normalized_title for keyword in keywords):
                 return role
         return "other"
+
+    def _normalize_synthesis_fields(self, synthesis: Dict[str, Any]) -> Dict[str, Any]:
+        normalized = dict(synthesis)
+        normalized.setdefault("quick", normalized.get("quick_summary", ""))
+        normalized.setdefault("eli5", normalized.get("eli5_explanation", ""))
+        normalized.setdefault("technical", normalized.get("technical_summary", ""))
+        normalized.setdefault("method_deep_dive", normalized.get("technical"))
+        normalized.setdefault("evidence_assessment", normalized.get("results_and_evidence"))
+        return normalized
+
+    def _coerce_summary(self, synthesis: Dict[str, Any] | AnalysisSummary) -> AnalysisSummary:
+        if isinstance(synthesis, AnalysisSummary):
+            return synthesis
+        return AnalysisSummary.model_validate(self._normalize_synthesis_fields(synthesis))
 
     def _select_sections_for_coverage(
         self,
@@ -703,7 +718,7 @@ Return strict JSON:
         terms: List[Dict[str, Any]],
         table_interpretations: Optional[List[Dict[str, Any]]] = None,
         figure_interpretations: Optional[List[Dict[str, Any]]] = None,
-    ) -> Dict[str, Any]:
+    ) -> AnalysisSummary:
         section_notes = "\n\n".join(
             (
                 f"## {section.get('title', 'Untitled section')}\n"
@@ -765,10 +780,10 @@ Artifact interpretations:
 
 Return strict JSON:
 {{
-  "quick_summary": "2-4 sentence overview",
+  "quick": "2-4 sentence overview",
   "guided_walkthrough": "multi-paragraph guided walkthrough of the whole paper",
-  "eli5_explanation": "substantial plain-language walkthrough for a non-expert",
-  "technical_summary": "detailed but concise technical summary covering method and evidence",
+  "eli5": "substantial plain-language walkthrough for a non-expert",
+  "technical": "detailed but concise technical summary covering method and evidence",
   "problem_and_motivation": "why this paper exists",
   "prior_work_and_gap": "what was attempted before this paper and what specific gap or limitation it addresses",
   "core_intuition": "the central idea of the paper in one plain-English paragraph before any formulas or notation",
@@ -784,10 +799,10 @@ Return strict JSON:
 }}"""
 
         fallback = {
-            "quick_summary": metadata.get("abstract", "Summary unavailable"),
+            "quick": metadata.get("abstract", "Summary unavailable"),
             "guided_walkthrough": metadata.get("abstract", "Walkthrough unavailable"),
-            "eli5_explanation": metadata.get("abstract", "Simple explanation unavailable"),
-            "technical_summary": metadata.get("abstract", "Technical summary unavailable"),
+            "eli5": metadata.get("abstract", "Simple explanation unavailable"),
+            "technical": metadata.get("abstract", "Technical summary unavailable"),
             "problem_and_motivation": metadata.get("abstract", ""),
             "prior_work_and_gap": metadata.get("abstract", ""),
             "core_intuition": paper_map.get("proposed_solution", ""),
@@ -814,8 +829,8 @@ Return strict JSON:
             fallback,
         )
         if isinstance(result, dict):
-            return result
-        return fallback
+            return self._coerce_summary(result)
+        return self._coerce_summary(fallback)
 
     @retry(
         stop=stop_after_attempt(3),
@@ -824,10 +839,11 @@ Return strict JSON:
     )
     async def repair_distillation(
         self,
-        synthesis: Dict[str, Any],
+        synthesis: AnalysisSummary,
         metadata: Dict[str, Any],
         paper_map: Dict[str, Any],
-    ) -> Dict[str, Any]:
+    ) -> AnalysisSummary:
+        synthesis_data = synthesis.model_dump()
         prompt = f"""Expand this research paper distillation where it is too shallow for a non-expert reader.
 
 Rules:
@@ -837,12 +853,12 @@ Rules:
 
 Paper title: {metadata.get('title', 'Unknown')}
 Paper map: {json.dumps(paper_map, ensure_ascii=True)}
-Current synthesis: {json.dumps(synthesis, ensure_ascii=True)}
+Current synthesis: {json.dumps(synthesis_data, ensure_ascii=True)}
 
 Return strict JSON with the same keys for:
 {{
   "guided_walkthrough": "expanded walkthrough",
-  "eli5_explanation": "expanded ELI5 walkthrough",
+  "eli5": "expanded ELI5 walkthrough",
   "method_deep_dive": "expanded method explanation",
   "limitations_and_caveats": "expanded limitations",
   "prior_work_and_gap": "expanded prior work context if too brief",
@@ -852,14 +868,14 @@ Return strict JSON with the same keys for:
 }}"""
 
         fallback = {
-            "guided_walkthrough": synthesis.get("guided_walkthrough", ""),
-            "eli5_explanation": synthesis.get("eli5_explanation", ""),
-            "method_deep_dive": synthesis.get("method_deep_dive", ""),
-            "limitations_and_caveats": synthesis.get("limitations_and_caveats", ""),
-            "prior_work_and_gap": synthesis.get("prior_work_and_gap", ""),
-            "core_intuition": synthesis.get("core_intuition", ""),
-            "authors_claims": synthesis.get("authors_claims", ""),
-            "evidence_assessment": synthesis.get("evidence_assessment", ""),
+            "guided_walkthrough": synthesis.guided_walkthrough or "",
+            "eli5": synthesis.eli5 or "",
+            "method_deep_dive": synthesis.method_deep_dive or "",
+            "limitations_and_caveats": synthesis.limitations_and_caveats or "",
+            "prior_work_and_gap": synthesis.prior_work_and_gap or "",
+            "core_intuition": synthesis.core_intuition or "",
+            "authors_claims": synthesis.authors_claims or "",
+            "evidence_assessment": synthesis.evidence_assessment or "",
         }
         result = await self._chat_json(
             "You deepen shallow research paper summaries without inventing facts.",
@@ -869,17 +885,16 @@ Return strict JSON with the same keys for:
         if not isinstance(result, dict):
             return synthesis
 
-        synthesis.update({
-            "guided_walkthrough": result.get("guided_walkthrough", synthesis.get("guided_walkthrough")),
-            "eli5_explanation": result.get("eli5_explanation", synthesis.get("eli5_explanation")),
-            "method_deep_dive": result.get("method_deep_dive", synthesis.get("method_deep_dive")),
-            "limitations_and_caveats": result.get("limitations_and_caveats", synthesis.get("limitations_and_caveats")),
-            "prior_work_and_gap": result.get("prior_work_and_gap", synthesis.get("prior_work_and_gap")),
-            "core_intuition": result.get("core_intuition", synthesis.get("core_intuition")),
-            "authors_claims": result.get("authors_claims", synthesis.get("authors_claims")),
-            "evidence_assessment": result.get("evidence_assessment", synthesis.get("evidence_assessment")),
+        return synthesis.model_copy(update={
+            "guided_walkthrough": result.get("guided_walkthrough", synthesis.guided_walkthrough),
+            "eli5": result.get("eli5", synthesis.eli5),
+            "method_deep_dive": result.get("method_deep_dive", synthesis.method_deep_dive),
+            "limitations_and_caveats": result.get("limitations_and_caveats", synthesis.limitations_and_caveats),
+            "prior_work_and_gap": result.get("prior_work_and_gap", synthesis.prior_work_and_gap),
+            "core_intuition": result.get("core_intuition", synthesis.core_intuition),
+            "authors_claims": result.get("authors_claims", synthesis.authors_claims),
+            "evidence_assessment": result.get("evidence_assessment", synthesis.evidence_assessment),
         })
-        return synthesis
 
     @retry(
         stop=stop_after_attempt(3),
@@ -888,7 +903,7 @@ Return strict JSON with the same keys for:
     )
     async def critique_distillation(
         self,
-        synthesis: Dict[str, Any],
+        synthesis: AnalysisSummary,
         paper_map: Dict[str, Any],
         section_breakdown: List[Dict[str, Any]],
         results_view: Dict[str, Any],
@@ -932,14 +947,14 @@ Ground truth — caveats and limitations:
 {caveats_from_paper or '- None extracted'}
 
 Distillation fields to review:
-- quick_summary: {(synthesis.get('quick_summary') or '')[:600]}
-- problem_and_motivation: {(synthesis.get('problem_and_motivation') or '')[:600]}
-- method_deep_dive: {(synthesis.get('method_deep_dive') or '')[:800]}
-- results_and_evidence: {(synthesis.get('results_and_evidence') or '')[:600]}
-- authors_claims: {(synthesis.get('authors_claims') or '')[:500]}
-- evidence_assessment: {(synthesis.get('evidence_assessment') or '')[:500]}
-- limitations_and_caveats: {(synthesis.get('limitations_and_caveats') or '')[:500]}
-- guided_walkthrough (first 900 chars): {(synthesis.get('guided_walkthrough') or '')[:900]}
+- quick: {(synthesis.quick or '')[:600]}
+- problem_and_motivation: {(synthesis.problem_and_motivation or '')[:600]}
+- method_deep_dive: {(synthesis.method_deep_dive or '')[:800]}
+- results_and_evidence: {(synthesis.results_and_evidence or '')[:600]}
+- authors_claims: {(synthesis.authors_claims or '')[:500]}
+- evidence_assessment: {(synthesis.evidence_assessment or '')[:500]}
+- limitations_and_caveats: {(synthesis.limitations_and_caveats or '')[:500]}
+- guided_walkthrough (first 900 chars): {(synthesis.guided_walkthrough or '')[:900]}
 
 Rules:
 - Only flag real problems grounded in the source material above.
@@ -953,7 +968,7 @@ Return strict JSON:
   "overall_assessment": "one sentence",
   "issues": [
     {{
-      "field": "method_deep_dive|results_and_evidence|limitations_and_caveats|guided_walkthrough|problem_and_motivation|authors_claims|evidence_assessment|eli5_explanation",
+      "field": "method_deep_dive|results_and_evidence|limitations_and_caveats|guided_walkthrough|problem_and_motivation|authors_claims|evidence_assessment|eli5",
       "severity": "high|medium|low",
       "type": "overclaim|missing_caveat|vague_method|evidence_gap|coverage_gap",
       "description": "specific problem in under 80 words",
@@ -985,14 +1000,14 @@ Return strict JSON:
     )
     async def revise_with_critique(
         self,
-        synthesis: Dict[str, Any],
+        synthesis: AnalysisSummary,
         critique: Dict[str, Any],
         paper_map: Dict[str, Any],
         metadata: Dict[str, Any],
-    ) -> Dict[str, Any]:
+    ) -> AnalysisSummary:
         issues = self._coerce_list(critique.get("issues"))
         affected_fields: List[str] = list({
-            issue["field"] for issue in issues if issue.get("field")
+            issue["field"] for issue in issues if issue.get("field") and hasattr(synthesis, issue["field"])
         })
         if not affected_fields:
             return synthesis
@@ -1004,7 +1019,7 @@ Return strict JSON:
             for issue in issues
         )
         current_values = "\n".join(
-            f'"{field}": {json.dumps((synthesis.get(field) or "")[:1200], ensure_ascii=True)}'
+            f'"{field}": {json.dumps((getattr(synthesis, field, "") or "")[:1200], ensure_ascii=True)}'
             for field in affected_fields
         )
         field_keys = ", ".join(f'"{f}": "revised text"' for f in affected_fields)
@@ -1033,7 +1048,7 @@ Current field values:
 Return strict JSON with only the revised fields:
 {{{field_keys}}}"""
 
-        fallback = {field: synthesis.get(field, "") for field in affected_fields}
+        fallback = {field: getattr(synthesis, field, "") for field in affected_fields}
         result = await self._chat_json(
             "You revise research paper distillations to fix specific critic-identified problems. Stay grounded — no invented facts.",
             prompt,
@@ -1042,11 +1057,12 @@ Return strict JSON with only the revised fields:
         if not isinstance(result, dict):
             return synthesis
 
+        updates = {}
         for field in affected_fields:
             revised = result.get(field)
             if revised:
-                synthesis[field] = revised
-        return synthesis
+                updates[field] = revised
+        return synthesis.model_copy(update=updates) if updates else synthesis
 
     @retry(
         stop=stop_after_attempt(3),
@@ -1106,7 +1122,7 @@ Return strict JSON:
         ]
 
     REFORMAT_PROSE_FIELDS = [
-        "guided_walkthrough", "method_deep_dive", "eli5_explanation",
+        "guided_walkthrough", "method_deep_dive", "eli5",
         "problem_and_motivation", "core_intuition", "prior_work_and_gap",
         "authors_claims", "evidence_assessment",
     ]
@@ -1127,18 +1143,28 @@ Return strict JSON:
         summary_json: Dict[str, Any],
         reading_level: str,
     ) -> Dict[str, Any]:
+        source_fields = {
+            "guided_walkthrough": summary_json.get("guided_walkthrough") or "",
+            "method_deep_dive": summary_json.get("method_deep_dive") or summary_json.get("technical") or "",
+            "eli5": summary_json.get("eli5") or "",
+            "problem_and_motivation": summary_json.get("problem_and_motivation") or "",
+            "core_intuition": summary_json.get("core_intuition") or "",
+            "prior_work_and_gap": summary_json.get("prior_work_and_gap") or "",
+            "authors_claims": summary_json.get("authors_claims") or "",
+            "evidence_assessment": summary_json.get("evidence_assessment") or summary_json.get("results_and_evidence") or "",
+        }
         if self.client is None:
-            return {field: summary_json.get(field, "") for field in self.REFORMAT_PROSE_FIELDS}
+            return source_fields
         if reading_level == "general":
-            return {field: summary_json.get(field, "") for field in self.REFORMAT_PROSE_FIELDS}
+            return source_fields
 
         level_instruction = self.READING_LEVEL_INSTRUCTIONS.get(
             reading_level, self.READING_LEVEL_INSTRUCTIONS["general"]
         )
         current_fields = "\n\n".join(
-            f"## {field}\n{(summary_json.get(field) or '')[:1400]}"
+            f"## {field}\n{source_fields[field][:1400]}"
             for field in self.REFORMAT_PROSE_FIELDS
-            if summary_json.get(field)
+            if source_fields[field]
         )
         field_keys = ", ".join(f'"{f}": "rewritten text"' for f in self.REFORMAT_PROSE_FIELDS)
 
@@ -1157,7 +1183,7 @@ Fields to rewrite:
 Return strict JSON:
 {{{field_keys}}}"""
 
-        fallback = {field: summary_json.get(field, "") for field in self.REFORMAT_PROSE_FIELDS}
+        fallback = source_fields
         result = await self._chat_json(
             f"You rewrite research paper distillations for a specific audience. Preserve all facts. Audience: {level_instruction}",
             prompt,
@@ -1165,7 +1191,7 @@ Return strict JSON:
         )
         if not isinstance(result, dict):
             return fallback
-        return {field: result.get(field) or summary_json.get(field, "") for field in self.REFORMAT_PROSE_FIELDS}
+        return {field: result.get(field) or source_fields[field] for field in self.REFORMAT_PROSE_FIELDS}
 
     @retry(
         stop=stop_after_attempt(3),
@@ -1191,19 +1217,19 @@ Return strict JSON:
         system_prompt = f"""You are an expert assistant helping a reader understand a specific research paper. Answer questions accurately using only the paper content below. If the content does not support a claim, say so explicitly — do not guess.
 
 === PAPER CONTENT ===
-Quick summary: {(summary_json.get('quick_summary') or '')[:400]}
+Quick summary: {(summary_json.get('quick') or '')[:400]}
 
 Problem: {(summary_json.get('problem_and_motivation') or '')[:500]}
 
-Core idea: {(summary_json.get('core_intuition') or summary_json.get('method_deep_dive') or '')[:500]}
+Core idea: {(summary_json.get('core_intuition') or summary_json.get('method_deep_dive') or summary_json.get('technical') or '')[:500]}
 
-Method: {(summary_json.get('method_deep_dive') or '')[:700]}
+Method: {(summary_json.get('method_deep_dive') or summary_json.get('technical') or '')[:700]}
 
 Results: {(summary_json.get('results_and_evidence') or '')[:500]}
 
 What authors claim: {(summary_json.get('authors_claims') or '')[:400]}
 
-Evidence assessment: {(summary_json.get('evidence_assessment') or '')[:400]}
+Evidence assessment: {(summary_json.get('evidence_assessment') or summary_json.get('results_and_evidence') or '')[:400]}
 
 Limitations: {(summary_json.get('limitations_and_caveats') or '')[:400]}
 
@@ -1264,18 +1290,19 @@ Return strict JSON: {{"reply": "your answer"}}"""
         )
 
         if (
-            len((synthesis.get("eli5_explanation") or "").strip()) < 420
-            or len((synthesis.get("guided_walkthrough") or "").strip()) < 800
+            len((synthesis.eli5 or "").strip()) < 420
+            or len((synthesis.guided_walkthrough or "").strip()) < 800
         ):
             synthesis = await self.repair_distillation(synthesis, metadata, paper_map)
 
-        synthesis["paper_map"] = paper_map
-        synthesis["results_view"] = results_view
-        synthesis["terms"] = terms
-        synthesis["formula_explanations"] = formula_explanations
-        synthesis["table_interpretations"] = table_interpretations
-        synthesis["figure_interpretations"] = figure_interpretations
-        return synthesis
+        result = synthesis.model_dump()
+        result["paper_map"] = paper_map
+        result["results_view"] = results_view
+        result["terms"] = terms
+        result["formula_explanations"] = formula_explanations
+        result["table_interpretations"] = table_interpretations
+        result["figure_interpretations"] = figure_interpretations
+        return result
 
     async def _gather_artifact_interpretations(
         self,

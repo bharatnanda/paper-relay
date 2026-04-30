@@ -2,7 +2,7 @@ import asyncio
 
 from app.models.analysis import PaperAnalysis
 from app.models.paper import Paper
-from app.services.ai_processor import AIProcessor
+from app.services.analysis_pipeline import AnalysisPipeline
 from app.services.ingestion import IngestionService
 from app.services.knowledge_graph import KnowledgeGraphBuilder
 from app.services.pdf_parser import PDFParser
@@ -57,133 +57,13 @@ def process_paper_task(paper_id: str, arxiv_id: str):
             return
 
         update_progress("Generating AI summaries...", 30)
-
-        async def process_all():
-            processor = AIProcessor()
-            summary_metadata = {
-                "title": paper.title,
-                "authors": paper.authors,
-                "abstract": paper.abstract,
-                "arxiv_id": paper.arxiv_id,
-                "sections": parsed.get("sections", []),
-                "figure_captions": parsed.get("figure_captions", [])[:12],
-                "tables": parsed.get("tables", [])[:8],
-            }
-
-            update_progress("Mapping the paper...", 40)
-            paper_map = await processor.map_paper(parsed["text"], summary_metadata)
-
-            update_progress("Distilling major sections...", 50)
-            section_breakdown = await processor.distill_sections(parsed["text"], summary_metadata, paper_map)
-
-            update_progress("Extracting evidence and math...", 60)
-            formulas_task = processor.explain_formulas(parsed["formulas"])
-            terms_task = processor.extract_terms(parsed["text"])
-            table_interp_task = processor.interpret_tables(summary_metadata, paper_map, section_breakdown)
-            figure_interp_task = processor.interpret_figures(summary_metadata, paper_map, section_breakdown)
-
-            formula_explanations, terms, table_interpretations, figure_interpretations = await asyncio.gather(
-                formulas_task,
-                terms_task,
-                table_interp_task,
-                figure_interp_task,
-                return_exceptions=True,
+        result = asyncio.run(
+            AnalysisPipeline().run(
+                parsed=parsed,
+                paper=paper,
+                update_progress=update_progress,
             )
-
-            if isinstance(formula_explanations, Exception):
-                formula_explanations = []
-            if isinstance(terms, Exception):
-                terms = []
-            if isinstance(table_interpretations, Exception):
-                table_interpretations = []
-            if isinstance(figure_interpretations, Exception):
-                figure_interpretations = []
-
-            results_view = await processor.extract_results_view(
-                summary_metadata,
-                section_breakdown,
-                paper_map,
-                table_interpretations,
-                figure_interpretations,
-            )
-            if isinstance(results_view, Exception):
-                results_view = {
-                    "evaluation_setup": "Evaluation setup unavailable",
-                    "results_summary": "Results summary unavailable",
-                    "strongest_evidence": [],
-                    "caveats": [],
-                    "artifact_interpretations": [*table_interpretations, *figure_interpretations],
-                }
-
-            if not formula_explanations:
-                update_progress("Recovering key math ideas...", 68)
-                fallback_math = await processor.explain_math_from_sections(
-                    parsed["text"],
-                    summary_metadata,
-                    paper_map,
-                    section_breakdown,
-                )
-                if fallback_math:
-                    formula_explanations = fallback_math
-
-            update_progress("Generating concept relationships...", 72)
-            try:
-                relationship_triples = await processor.generate_relationships(
-                    terms, section_breakdown, paper_map
-                )
-            except Exception:
-                relationship_triples = []
-
-            update_progress("Synthesizing final distillation...", 76)
-            synthesis = await processor.synthesize_distillation(
-                summary_metadata,
-                paper_map,
-                section_breakdown,
-                results_view,
-                formula_explanations,
-                terms,
-                table_interpretations,
-                figure_interpretations,
-            )
-
-            update_progress("Reviewing distillation quality...", 80)
-            try:
-                critique = await processor.critique_distillation(
-                    synthesis, paper_map, section_breakdown, results_view, summary_metadata
-                )
-            except Exception:
-                critique = {"needs_revision": False, "overall_assessment": "", "issues": []}
-
-            if critique.get("needs_revision"):
-                update_progress("Revising based on critique...", 84)
-                try:
-                    synthesis = await processor.revise_with_critique(
-                        synthesis, critique, paper_map, summary_metadata
-                    )
-                except Exception:
-                    pass  # Keep original synthesis if revision fails
-
-            if (
-                len((synthesis.get("eli5_explanation") or "").strip()) < 420
-                or len((synthesis.get("guided_walkthrough") or "").strip()) < 800
-            ):
-                update_progress("Deepening the walkthrough...", 88)
-                synthesis = await processor.repair_distillation(synthesis, summary_metadata, paper_map)
-
-            return (
-                synthesis,
-                critique,
-                formula_explanations,
-                terms,
-                paper_map,
-                section_breakdown,
-                results_view,
-                table_interpretations,
-                figure_interpretations,
-                relationship_triples,
-            )
-
-        result = asyncio.run(process_all())
+        )
         if result is None:
             analysis.processing_status = "failed"
             analysis.error_message = "AI processing failed - service unavailable or timeout"
@@ -191,21 +71,10 @@ def process_paper_task(paper_id: str, arxiv_id: str):
             db.commit()
             return
 
-        (
-            summary,
-            critique,
-            formula_explanations,
-            terms,
-            paper_map,
-            section_breakdown,
-            results_view,
-            table_interpretations,
-            figure_interpretations,
-            relationship_triples,
-        ) = result
-
-        if isinstance(summary, Exception):
-            raise summary
+        terms = result.terms
+        paper_map = result.paper_map
+        results_view = result.results_view
+        relationship_triples = result.relationship_triples
 
         update_progress("Building knowledge graph...", 90)
         kg_builder = KnowledgeGraphBuilder()
@@ -219,30 +88,7 @@ def process_paper_task(paper_id: str, arxiv_id: str):
         )
 
         update_progress("Saving results...", 90)
-        analysis.summary_json = {
-            "quick": summary.get("quick_summary"),
-            "eli5": summary.get("eli5_explanation"),
-            "technical": summary.get("technical_summary"),
-            "key_contributions": summary.get("key_contributions"),
-            "key_findings": summary.get("key_findings"),
-            "formula_explanations": formula_explanations,
-            "figure_captions": parsed.get("figure_captions", []),
-            "tables": parsed.get("tables", []),
-            "guided_walkthrough": summary.get("guided_walkthrough"),
-            "problem_and_motivation": summary.get("problem_and_motivation"),
-            "method_deep_dive": summary.get("method_deep_dive"),
-            "results_and_evidence": summary.get("results_and_evidence"),
-            "limitations_and_caveats": summary.get("limitations_and_caveats"),
-            "reader_takeaways": summary.get("reader_takeaways"),
-            "section_breakdown": summary.get("section_breakdown") or section_breakdown,
-            "paper_map": paper_map,
-            "results_view": results_view,
-            "artifact_interpretations": results_view.get("artifact_interpretations", []),
-            "table_interpretations": table_interpretations,
-            "figure_interpretations": figure_interpretations,
-            "terms": terms,
-            "critique": critique,
-        }
+        analysis.summary_json = result.summary.model_dump()
         analysis.knowledge_graph_json = knowledge_graph
         analysis.processing_status = "complete"
         analysis.progress_step = "Complete!"

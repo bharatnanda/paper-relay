@@ -98,6 +98,7 @@ export interface ArtifactInterpretation {
   what_it_shows: string;
   why_it_matters?: string;
   confidence?: 'high' | 'medium' | 'low' | string;
+  missing_context?: string;
 }
 
 export interface DistilledTerm {
@@ -158,4 +159,19 @@ export interface GraphEdge {
   target: string;
   type: string;
   weight: number;
+}
+
+export interface SharedPaperResponse {
+  paper: {
+    id: string;
+    arxiv_id?: string;
+    title: string;
+    authors: string[];
+    pdf_url?: string;
+  };
+  analysis: {
+    status: 'pending' | 'processing' | 'complete' | 'failed' | string;
+    summary?: PaperAnalysis['summary'];
+    knowledge_graph?: KnowledgeGraph;
+  };
 }
